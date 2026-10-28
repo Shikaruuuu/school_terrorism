@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0d1210">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>学校にテロリスト</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;700;900&display=swap">
+<style>
+:root {
+  --ink: #0d1210;
+  --panel: rgba(10, 16, 13, .82);
+  --line: rgba(143, 224, 176, .35);
+  --radar: #8fe0b0;
+  --chalk: #eceae1;
+  --dim: #a3ada4;
+  --alert: #ff3b30;
+  --evasion: #ffa53a;
+  --gold: #f2d264;
+  --pink: #ff8fb6;
+  --f-display: 'Dela Gothic One', 'Hiragino Sans', 'Yu Gothic', sans-serif;
+  --f-body: 'Zen Kaku Gothic New', 'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif;
+  --safe-l: max(16px, env(safe-area-inset-left, 0px));
+  --safe-r: max(16px, env(safe-area-inset-right, 0px));
+  --safe-b: max(10px, env(safe-area-inset-bottom, 0px));
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ink); color: var(--chalk); font-family: var(--f-body); }
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+/* ---------- タイトル ---------- */
+#title {
+  position: fixed; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  background: linear-gradient(180deg, rgba(8,12,10,.55), rgba(8,12,10,.86) 55%, rgba(8,12,10,.96));
+  padding: max(18px, env(safe-area-inset-top, 0px)) var(--safe-r) 28px var(--safe-l);
+}
+.t-wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 14px; }
+.t-eyebrow { font-size: 12px; letter-spacing: .35em; color: var(--radar); margin: 0; }
+.t-logo { margin: 0; font-family: var(--f-display); font-weight: 400; line-height: 1; font-size: clamp(40px, 9vw, 92px); letter-spacing: .02em; text-shadow: 0 3px 0 rgba(0,0,0,.6); }
+.t-logo em { font-style: normal; color: var(--alert); }
+.t-sub { margin: 0; color: var(--dim); font-size: 14px; max-width: 46em; line-height: 1.7; }
+.t-label { font-size: 12px; letter-spacing: .3em; color: var(--dim); margin: 6px 0 0; }
+#modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 10px; }
+.mode {
+  display: grid; gap: 4px; text-align: left; padding: 14px 16px; border-radius: 4px;
+  background: rgba(20, 30, 25, .85); border: 1px solid var(--line);
+  transition: transform .12s, border-color .12s, background .12s;
+}
+.mode:hover, .mode:focus-visible { transform: translateY(-2px); border-color: var(--gold); background: rgba(30, 44, 36, .92); }
+.mode-kind { font-size: 11px; letter-spacing: .3em; color: var(--radar); }
+.mode-name { font-family: var(--f-display); font-size: 22px; line-height: 1.25; }
+.mode-hint { font-size: 13.5px; line-height: 1.6; }
+.mode-goal { font-size: 12.5px; color: var(--gold); }
+.mode-best { font-size: 12px; color: var(--pink); }
+.howto { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 10px; font-size: 13px; color: var(--dim); line-height: 1.7; }
+.howto section { background: rgba(20, 30, 25, .6); border: 1px dashed var(--line); border-radius: 4px; padding: 10px 14px; }
+.howto h3 { margin: 0 0 4px; font-size: 13px; color: var(--chalk); letter-spacing: .1em; }
+.howto kbd { font-family: inherit; font-size: 11.5px; background: #24312a; border: 1px solid #3a4b41; border-bottom-width: 2px; border-radius: 3px; padding: 0 5px; color: var(--chalk); }
+.howto ul { margin: 0; padding-left: 1.1em; }
+.t-foot { font-size: 11.5px; color: var(--dim); margin: 0; line-height: 1.6; }
+.t-foot a { color: var(--radar); }
+
+/* ---------- HUD ---------- */
+/* 文字の説明は出さない。体力・目的・レーダー・ボタンだけ */
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+.overlay, #cine { z-index: 8; }
+.tl { position: absolute; top: max(10px, env(safe-area-inset-top, 0px)); left: var(--safe-l); display: grid; gap: 6px; width: min(30vw, 260px); text-shadow: 0 1px 2px rgba(0,0,0,.9); }
+.life-bar { display: block; height: 8px; background: rgba(0,0,0,.55); border-radius: 4px; overflow: hidden; box-shadow: 0 0 0 1px rgba(255,255,255,.18); }
+#lifeFill { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #4fd07e, #8fe0b0); transition: width .2s; }
+#lifeFill.low { background: linear-gradient(90deg, #ff3b30, #ff7a5a); }
+#obj { justify-self: start; font-size: 13px; font-weight: 700; background: rgba(0,0,0,.45); border-left: 3px solid var(--gold); padding: 3px 10px; border-radius: 2px; }
+.tr { position: absolute; top: max(10px, env(safe-area-inset-top, 0px)); right: var(--safe-r); display: flex; flex-direction: row-reverse; align-items: flex-start; gap: 6px; z-index: 1; }
+#radar { width: clamp(84px, min(15vw, 32vh), 150px); height: clamp(84px, min(15vw, 32vh), 150px); border: 2px solid var(--line); border-radius: 50%; background: #06130d; box-shadow: 0 0 0 1px rgba(0,0,0,.6); }
+.icon-btn { pointer-events: auto; width: 40px; height: 34px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel); font-size: 14px; }
+/* 見つかったら画面の縁が赤く、逃げ切るまでの秒数だけ出す */
+.phase { position: absolute; top: max(10px, env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); font-family: var(--f-display); font-size: 22px; line-height: 1; font-variant-numeric: tabular-nums; }
+.phase.sneak { display: none; }
+.phase.alert { color: var(--alert); text-shadow: 0 0 10px rgba(255,59,48,.7); }
+.phase.evasion { color: var(--evasion); }
+.phase b { display: none; }
+#hud::before { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s; box-shadow: inset 0 0 60px 18px var(--alert); }
+body[data-phase="alert"] #hud::before { opacity: .7; animation: blink 1s ease-in-out infinite; }
+body[data-phase="evasion"] #hud::before { opacity: .45; box-shadow: inset 0 0 50px 14px var(--evasion); }
+@keyframes blink { 50% { opacity: .35; } }
+.keys-help { position: absolute; left: var(--safe-l); bottom: var(--safe-b); font-size: 11.5px; color: var(--dim); background: rgba(0,0,0,.35); padding: 5px 10px; border-radius: 4px; }
+body.touch .keys-help { display: none; }
+
+/* タッチ操作：左にスティック、右に3つのボタン */
+.touch-ui { display: none; }
+body.touch .touch-ui { display: block; }
+#lookZone { position: absolute; left: 0; right: 0; bottom: 0; height: 86%; pointer-events: auto; touch-action: none; z-index: 0; }
+#stickZone { position: absolute; left: 0; bottom: 0; width: 42%; height: 80%; pointer-events: auto; touch-action: none; }
+#stickBase { position: absolute; left: calc(var(--safe-l) + 18px); bottom: calc(var(--safe-b) + 14px); width: 124px; height: 124px; border-radius: 50%; background: radial-gradient(circle, rgba(10,18,14,.18), rgba(10,18,14,.45)); border: 2px solid rgba(236,234,225,.35); pointer-events: none; }
+#stickBase.on { border-color: rgba(236,234,225,.6); }
+#stickKnob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; border-radius: 50%; background: rgba(236,234,225,.55); box-shadow: 0 2px 8px rgba(0,0,0,.4); transform: translate(-50%, -50%); }
+.pad { position: absolute; right: var(--safe-r); bottom: var(--safe-b); width: 200px; height: 170px; pointer-events: none; }
+.pad button {
+  position: absolute; pointer-events: auto; touch-action: none; border-radius: 50%; display: grid; place-items: center; text-align: center;
+  background: rgba(10,18,14,.5); border: 2px solid rgba(236,234,225,.4); font-weight: 700; line-height: 1.15; padding: 4px;
+}
+.pad button.down { background: rgba(236,234,225,.4); }
+.pad button span { font-size: 13px; display: block; }
+#btnA { width: 92px; height: 92px; right: 0; bottom: 10px; border-color: rgba(255,120,90,.75); }
+#btnA span { font-size: 16px; }
+#btnA.pulse { animation: pulseBtn 1s ease-in-out infinite; border-color: var(--gold); }
+@keyframes pulseBtn { 50% { box-shadow: 0 0 0 10px rgba(242,210,100,.35), 0 0 22px rgba(242,210,100,.8); transform: scale(1.06); } }
+#btnC { width: 66px; height: 66px; right: 102px; bottom: 0; }
+#btnC.on { background: rgba(143,224,176,.45); border-color: var(--radar); }
+#btnRun { width: 60px; height: 60px; right: 8px; bottom: 112px; font-size: 12px; }
+#btnRun.on { background: rgba(242,210,100,.85); color: #1a1406; border-color: var(--gold); }
+
+/* 目的地・気配 */
+#wp { position: absolute; left: 0; top: 0; display: grid; justify-items: center; gap: 2px; margin: -18px 0 0 -60px; width: 120px; pointer-events: none; filter: drop-shadow(0 1px 2px rgba(0,0,0,.8)); }
+#wpArrow { color: var(--gold); font-size: 20px; line-height: 1; animation: bob 1s ease-in-out infinite; }
+#wpLabel { font-size: 12px; font-weight: 700; color: var(--gold); background: rgba(0,0,0,.55); padding: 1px 8px; border-radius: 10px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+@keyframes bob { 50% { transform: translateY(4px); } }
+#susp { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+#susp i { position: absolute; left: -12px; top: -16px; width: 24px; height: 32px; background: var(--gold); clip-path: polygon(50% 0, 100% 100%, 50% 72%, 0 100%); transition: opacity .15s; }
+#susp i.red { background: var(--alert); }
+
+/* ロッカーの中・ダンボールの中 */
+#lockerView { position: fixed; inset: 0; pointer-events: none; display: none; z-index: 2; }
+body.in-locker #lockerView { display: block; }
+#lockerView {
+  --door: #3b4a5c;
+  background:
+    repeating-linear-gradient(180deg, var(--door) 0 7px, transparent 7px 44px) center 50% / 76% 60% no-repeat,
+    linear-gradient(var(--door), var(--door)) top / 100% 20% no-repeat,
+    linear-gradient(var(--door), var(--door)) bottom / 100% 20% no-repeat,
+    linear-gradient(var(--door), var(--door)) left / 12% 100% no-repeat,
+    linear-gradient(var(--door), var(--door)) right / 12% 100% no-repeat;
+  box-shadow: inset 0 0 70px 20px rgba(0,0,0,.5);
+}
+/* ---------- 演出 ---------- */
+#flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; }
+#flash.hurt { background: radial-gradient(ellipse at center, transparent 40%, rgba(255,0,0,.55)); animation: fl .45s ease-out; }
+#flash.alert { background: rgba(255,59,48,.18); animation: fl .6s ease-out; }
+#flash.white { background: #fff; animation: fl .5s ease-out; }
+@keyframes fl { from { opacity: 1; } to { opacity: 0; } }
+
+/* ---------- 会話シーン ---------- */
+#cine { position: fixed; inset: 0; display: grid; grid-template-rows: 1fr auto; cursor: pointer; }
+.cine-box { position: relative; z-index: 1; margin: 0 auto calc(var(--safe-b) + 12px); width: min(760px, calc(100% - 32px)); background: rgba(4,7,6,.86); border: 1px solid var(--line); border-radius: 4px; padding: 14px 18px 12px; }
+#cineWho { display: inline-block; font-size: 13px; color: var(--pink); margin-bottom: 4px; font-weight: 700; }
+#cineText { margin: 0; font-size: clamp(15px, 2.4vw, 19px); line-height: 1.75; min-height: 3.4em; }
+.cine-foot { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; color: var(--dim); margin-top: 4px; }
+#cineSkip { background: none; border: 1px solid var(--line); border-radius: 3px; padding: 2px 10px; font-size: 12px; color: var(--dim); position: relative; z-index: 2; }
+
+/* ---------- メニュー類 ---------- */
+.overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4,7,6,.78); padding: 16px var(--safe-r) 16px var(--safe-l); overflow-y: auto; }
+.card { width: min(520px, 100%); background: rgba(14,22,18,.95); border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px; display: grid; gap: 12px; text-align: center; }
+.card h2 { margin: 0; font-family: var(--f-display); font-weight: 400; font-size: 26px; letter-spacing: .08em; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.btn { padding: 10px 18px; border-radius: 4px; border: 1px solid var(--line); background: #1d2a23; font-weight: 700; min-width: 120px; }
+.btn.primary { background: var(--gold); color: #1a1406; border-color: var(--gold); }
+#diffs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.diff { display: grid; gap: 2px; justify-items: center; padding: 12px 6px; border-radius: 6px; border: 2px solid var(--line); background: #1d2a23; }
+.diff:hover, .diff:focus-visible { border-color: var(--gold); }
+.diff-name { font-family: var(--f-display); font-size: 18px; }
+.diff-easy .diff-name { color: var(--radar); }
+.diff-normal .diff-name { color: var(--gold); }
+.diff-hard .diff-name { color: var(--alert); }
+.diff-count { font-size: 12px; color: var(--dim); }
+.diff-best { font-size: 11px; color: var(--pink); }
+@media (max-width: 420px) { #diffs { grid-template-columns: 1fr; } }
+#over .card h2 { color: var(--alert); font-size: clamp(30px, 6vw, 46px); }
+#overLine { margin: 0; font-size: 16px; }
+#result .card { width: min(560px, 100%); }
+.res-mode { font-size: 12px; letter-spacing: .25em; color: var(--radar); }
+.res-rank { display: grid; gap: 2px; }
+#resRank { font-family: var(--f-display); font-size: clamp(34px, 7vw, 54px); color: var(--gold); line-height: 1.1; }
+#resRankSub { font-size: 13px; color: var(--dim); }
+#resStats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; margin: 0; text-align: left; }
+#resStats div { background: rgba(0,0,0,.3); padding: 6px 10px; border-radius: 3px; display: flex; justify-content: space-between; gap: 8px; }
+#resStats dt { font-size: 12px; color: var(--dim); }
+#resStats dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* 縦向きのスマホ */
+#rotate { display: none; }
+@media (orientation: portrait) and (pointer: coarse) {
+  body.in-game #rotate { display: grid; position: fixed; inset: 0; z-index: 50; place-items: center; background: rgba(4,7,6,.95); text-align: center; padding: 24px; }
+}
+.rot-icon { width: 64px; height: 100px; border: 4px solid var(--radar); border-radius: 12px; margin: 0 auto 16px; animation: rot 1.8s ease-in-out infinite; }
+@keyframes rot { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+
+/* 狭い横画面（スマホ横向き） */
+@media (max-height: 480px) {
+  .t-logo { font-size: clamp(34px, 7vw, 60px); }
+  .t-sub { font-size: 12.5px; }
+  .howto { font-size: 12px; }
+  .mode { padding: 10px 12px; }
+  .mode-name { font-size: 18px; }
+  .mode-hint { font-size: 12.5px; }
+}
+@media (max-height: 360px) {
+  .pad { transform: scale(.82); transform-origin: right bottom; }
+  #stickBase { transform: scale(.85); transform-origin: left bottom; }
+  #obj { font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #btnA.pulse, .rot-icon, body[data-phase="alert"] #hud::before { animation: none; }
+}
+</style>
+</head>
+<body>
+<canvas id="view" aria-label="ゲーム画面"></canvas>
+
+<section id="title">
+  <div class="t-wrap">
+    <p class="t-eyebrow">TACTICAL CLASSROOM ESPIONAGE ACTION</p>
+    <h1 class="t-logo">学校に<em>テロリスト</em></h1>
+    <p class="t-sub">5時間目、数学の授業中。教室のドアが開き、覆面の男たちがなだれ込んできた――。男子なら一度は妄想した「あの日」が、ついに来た。掃除用具ロッカーに隠れた中学2年生・ユウトのステルスアクション。</p>
+    <p class="t-label">ストーリーを選べ</p>
+    <div id="modes"></div>
+    <div class="howto">
+      <section>
+        <h3>あそびかた</h3>
+        <ul>
+          <li>見つからないように、<b>黄色い印</b>の場所を目指す</li>
+          <li>敵の<b>背後</b>から殴れば一撃。しゃがむと見つかりにくい</li>
+        </ul>
+      </section>
+      <section>
+        <h3>操作（スマホは横向き）</h3>
+        <ul>
+          <li>スマホ：左のスティックで移動、右のボタンで殴る・しゃがむ・走る</li>
+          <li>PC：<kbd>WASD</kbd>移動　<kbd>Shift</kbd>走る　<kbd>E</kbd>殴る　<kbd>C</kbd>しゃがむ　マウスで視点</li>
+        </ul>
+      </section>
+    </div>
+    <p class="t-foot">本作はフィクションです。登場する学校・人物・団体はすべて架空のものです。</p>
+  </div>
+</section>
+
+<section id="hud" hidden>
+  <div class="tl">
+    <span class="life-bar" aria-label="体力"><i id="lifeFill"></i></span>
+    <div id="obj"></div>
+  </div>
+  <div class="phase sneak" id="phase"><b></b><span id="phaseT"></span></div>
+  <div class="tr">
+    <canvas id="radar" width="150" height="150" aria-label="レーダー"></canvas>
+    <button type="button" class="icon-btn" id="btnPause" aria-label="ポーズ">II</button>
+  </div>
+  <div id="susp"></div>
+  <div id="wp" hidden><span id="wpArrow">▼</span><span id="wpLabel"></span></div>
+  <div class="keys-help"><kbd>WASD</kbd> 移動　<kbd>Shift</kbd> 走る　<kbd>E</kbd> 殴る　<kbd>C</kbd> しゃがむ　マウス 視点</div>
+  <div class="touch-ui">
+    <div id="lookZone"></div>
+    <div id="stickZone"><div id="stickBase"><div id="stickKnob"></div></div></div>
+    <div class="pad">
+      <button type="button" id="btnA"><span id="btnALabel">殴る</span></button>
+      <button type="button" id="btnC"><span id="btnCLabel">しゃがむ</span></button>
+      <button type="button" id="btnRun" aria-pressed="false">走る</button>
+    </div>
+  </div>
+</section>
+
+<div id="lockerView"></div>
+<div id="flash"></div>
+
+<section id="cine" hidden>
+  <div></div>
+  <div class="cine-box">
+    <span id="cineWho" hidden></span>
+    <p id="cineText"></p>
+    <div class="cine-foot"><span id="cineCount"></span><span>タップ／Enterで次へ　<button type="button" id="cineSkip">スキップ</button></span></div>
+  </div>
+</section>
+
+<section id="diffPick" class="overlay" hidden>
+  <div class="card">
+    <span class="res-mode" id="diffStory"></span>
+    <h2>難易度をえらぶ</h2>
+    <div id="diffs"></div>
+    <div class="btns"><button type="button" class="btn" id="diffBack">もどる</button></div>
+  </div>
+</section>
+
+<section id="pauseMenu" class="overlay" hidden>
+  <div class="card">
+    <h2>PAUSE</h2>
+    <div class="btns">
+      <button type="button" class="btn primary" id="resume">つづける</button>
+      <button type="button" class="btn" id="restart">最初から</button>
+      <button type="button" class="btn" id="muteBtn">音：ON</button>
+      <button type="button" class="btn" id="quitBtn">タイトルへ</button>
+    </div>
+  </div>
+</section>
+
+<section id="over" class="overlay" hidden>
+  <div class="card">
+    <h2>GAME OVER</h2>
+    <p id="overLine"></p>
+    <div class="btns">
+      <button type="button" class="btn primary" id="continueBtn">コンティニュー</button>
+      <button type="button" class="btn" id="overTitle">タイトルへ</button>
+    </div>
+  </div>
+</section>
+
+<section id="result" class="overlay" hidden>
+  <div class="card">
+    <span class="res-mode" id="resMode"></span>
+    <div class="res-rank"><span style="font-size:12px;color:var(--dim)">コードネーム</span><span id="resRank"></span><span id="resRankSub"></span></div>
+    <dl id="resStats"></dl>
+    <div class="btns">
+      <button type="button" class="btn primary" id="resRetry">もう一度</button>
+      <button type="button" class="btn" id="resTitle">タイトルへ</button>
+    </div>
+  </div>
+</section>
+
+<div id="rotate"><div><div class="rot-icon"></div><p>スマホを<b>横向き</b>にしてプレイしてください</p></div></div>
+
+<script src="vendor/three.min.js"></script>
+<script src="js/map.js"></script>
+<script src="js/models.js"></script>
+<script src="js/characters.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/world.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
