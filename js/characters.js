@@ -206,7 +206,15 @@
   // ---------- 体の寸法 ----------
   const HIP = 0.88, THIGH = 0.41, SHIN = 0.41, UPPER = 0.27, FORE = 0.25, SHOULDER = 0.41, NECK = 0.56, HEAD_C = 0.115;
 
-  // o: { kind: 'gakuran'|'sailor'|'terror', skin, hair, hairStyle, iris, mouth, brow, boss, scale }
+  // 制服の色
+  const UNI = {
+    blazer: 0x1d2335, lapel: 0x151a28, cardigan: 0xd9c39c, cardiganDark: 0xc4ad85, shirt: 0xf4f3ef,
+    skirt: 0x27304b, skirtDark: 0x1b2135, plaid: 0x56627f, plaidRed: 0x7c2c38, socks: 0x1d2131,
+    trousers: 0x3a3e4a, loafer: 0x4a2b1d, loaferBoy: 0x1c1a19, bag: 0x1b1c20,
+  };
+  const BOWS = { red: 0xb5202e, blue: 0x2f5a9a, green: 0x2d6b4f };
+
+  // o: { kind: 'boy'|'girl'|'terror', outer: 'blazer'|'cardigan', bow, skin, hair, hairStyle, glasses, ribbon, backpack, iris, mouth, brow, boss, scale }
   function human(o) {
     const sk = o.skin || 0xeec3a0;
     const g = new THREE.Group();
@@ -216,35 +224,60 @@
     hips.position.y = HIP;
     body.add(hips);
     const k = o.kind;
-    const top = k === 'gakuran' ? 0x181b24 : k === 'sailor' ? 0x1b2443 : o.boss ? 0x26272a : 0x4b5139;
-    const pants = k === 'gakuran' ? 0x181b24 : k === 'terror' ? (o.boss ? 0x1d1e21 : 0x3d4034) : null;
+    const female = k === 'girl';
+    const outer = o.outer || 'blazer';
+    const bow = BOWS[o.bow || 'red'];
+    const top = k === 'terror' ? (o.boss ? 0x26272a : 0x4b5139) : outer === 'cardigan' ? UNI.cardigan : UNI.blazer;
+    const pants = k === 'boy' ? UNI.trousers : k === 'terror' ? (o.boss ? 0x1d1e21 : 0x3d4034) : null;
 
     // --- 胴体（首・肩・服の飾り・銃までひとまとめ） ---
-    const torsoKey = 'torso|' + k + '|' + (o.boss ? 1 : 0);
+    const torsoKey = 'torso|' + k + '|' + outer + '|' + (o.bow || '') + '|' + (o.backpack ? 1 : 0) + '|' + (o.boss ? 1 : 0);
     hips.add(cached(torsoKey, () => {
       const p = new P();
       const prof = [[0.0, -0.06], [0.15, -0.05], [0.155, 0.02], [0.13, 0.12], [0.15, 0.24], [0.17, 0.34], [0.165, 0.42], [0.11, 0.48], [0.05, 0.5]].map(([r, y]) => new THREE.Vector2(r, y));
       p.add(new THREE.LatheGeometry(prof, 18), top, [0, 0, 0], null, [1, 1, 0.66]);
       p.add(G.cyl(0.045, 0.05, 0.12), k === 'terror' && !o.boss ? 0x1b1c1f : sk, [0, NECK - 0.02, 0.005]);
       [-1, 1].forEach((s) => p.add(G.sph, top, [s * 0.165, SHOULDER, 0], null, [0.07, 0.065, 0.07]));
-      if (k === 'gakuran') {
-        // 学ラン：立て襟、白いカラー、金ボタン、裾
-        p.add(G.cyl(0.062, 0.07, 0.07, true), 0x14161d, [0, 0.5, 0], null, [1, 1, 0.85]);
-        p.add(G.cyl(0.063, 0.063, 0.012, true), 0xf2f2ee, [0, 0.536, 0], null, [1, 1, 0.85]);
-        for (let i = 0; i < 5; i++) p.add(G.sph, 0xd9b44a, [0, 0.43 - i * 0.095, 0.103 - (i > 2 ? 0.004 : 0)], null, [0.011, 0.011, 0.008]);
-        p.add(G.box(0.3, 0.012, 0.012), 0x0d0f14, [0, -0.04, 0.1]);
-      } else if (k === 'sailor') {
-        // セーラー服：白い襟（後ろの四角と前のV）、紺のライン、赤いスカーフ
-        p.add(G.box(0.27, 0.2, 0.012), 0xf3f3ef, [0, 0.37, -0.115], [0.25, 0, 0]);
-        p.add(G.box(0.25, 0.012, 0.014), 0x1b2443, [0, 0.29, -0.104], [0.25, 0, 0]);
-        [-1, 1].forEach((s) => p.add(G.box(0.05, 0.2, 0.012), 0xf3f3ef, [s * 0.06, 0.4, 0.1], [-0.15, 0, s * 0.55]));
-        p.add(new THREE.ConeGeometry(0.035, 0.11, 4), 0xc8262f, [0, 0.33, 0.115], [Math.PI, 0, 0]);
-        p.add(G.sph, 0xc8262f, [0, 0.39, 0.112], null, [0.03, 0.022, 0.015]);
-        // プリーツスカート
-        p.add(G.cyl(0.16, 0.25, 0.3, true), 0x1b2443, [0, -0.15, 0], null, [1, 1, 0.8]);
-        for (let i = 0; i < 12; i++) {
-          const a = (i / 12) * Math.PI * 2;
-          p.add(G.box(0.008, 0.29, 0.006), 0x111829, [Math.sin(a) * 0.205, -0.15, Math.cos(a) * 0.205 * 0.8], [0.27 * Math.cos(a), a, -0.27 * Math.sin(a) * 0]);
+      if (k === 'boy' || k === 'girl') {
+        // 白いシャツの襟元（Vの開きと襟）
+        p.add(G.box(0.09, 0.13, 0.02), UNI.shirt, [0, 0.4, 0.098], [-0.12, 0, 0]);
+        [-1, 1].forEach((s) => p.add(G.box(0.05, 0.03, 0.06), UNI.shirt, [s * 0.035, 0.485, 0.06], [-0.3, 0, s * 0.5]));
+        if (outer === 'blazer') {
+          // ブレザー：襟（ラペル）、ボタン、胸の校章
+          [-1, 1].forEach((s) => p.add(G.box(0.045, 0.17, 0.014), UNI.lapel, [s * 0.058, 0.39, 0.1], [-0.12, 0, s * 0.32]));
+          [0.2, 0.08].forEach((y) => p.add(G.sph, 0xc9a24a, [0.02, y, 0.106], null, [0.011, 0.011, 0.008]));
+          p.add(G.box(0.03, 0.035, 0.006), 0xc9a24a, [-0.085, 0.31, 0.105]);
+          p.add(G.box(0.3, 0.035, 0.18), UNI.blazer, [0, -0.03, 0], null, [1, 1, 1.1]);
+        } else {
+          // カーディガン：前ボタンと裾のリブ
+          for (let i = 0; i < 4; i++) p.add(G.sph, 0x8a6e48, [0, 0.3 - i * 0.085, 0.104], null, [0.009, 0.009, 0.007]);
+          p.add(G.cyl(0.152, 0.152, 0.05, true), UNI.cardiganDark, [0, -0.025, 0], null, [1, 1, 0.68]);
+        }
+        if (female) {
+          // リボン（ストライプ入り）
+          [-1, 1].forEach((s) => p.add(G.sph, bow, [s * 0.026, 0.45, 0.108], [0, 0, s * 0.3], [0.03, 0.019, 0.012]));
+          p.add(G.sph, bow, [0, 0.45, 0.112], null, [0.012, 0.014, 0.01]);
+          [-1, 1].forEach((s) => p.add(G.box(0.016, 0.06, 0.006), bow, [s * 0.012, 0.415, 0.108], [0, 0, s * 0.25]));
+          p.add(G.box(0.05, 0.004, 0.003), 0xf0e6e6, [0, 0.452, 0.122], [0, 0, 0.5]);
+          // チェックのプリーツスカート（短め）
+          p.add(G.cyl(0.155, 0.255, 0.22, true), UNI.skirt, [0, -0.1, 0], null, [1, 1, 0.8]);
+          for (let i = 0; i < 16; i++) {
+            const a = (i / 16) * Math.PI * 2;
+            p.add(G.box(0.012, 0.215, 0.006), i % 2 ? UNI.skirtDark : UNI.plaid, [Math.sin(a) * 0.207, -0.1, Math.cos(a) * 0.207 * 0.8], [0, a, 0]);
+          }
+          [-0.06, -0.15].forEach((y, i) => p.add(G.cyl(0.18 + (y < -0.1 ? 0.05 : 0.025), 0.18 + (y < -0.1 ? 0.05 : 0.025), 0.008, true), i ? UNI.plaidRed : UNI.plaid, [0, y, 0], null, [1, 1, 0.8]));
+        } else {
+          // ネクタイ（ストライプ入り）
+          p.add(G.box(0.032, 0.03, 0.012), bow, [0, 0.455, 0.108]);
+          p.add(G.box(0.036, 0.16, 0.008), bow, [0, 0.36, 0.108], [-0.1, 0, 0]);
+          for (let i = 0; i < 3; i++) p.add(G.box(0.038, 0.006, 0.004), 0xd8c9a0, [0, 0.42 - i * 0.045, 0.114], [-0.1, 0, 0.6]);
+        }
+        if (o.backpack) {
+          // 黒いリュックと、ピンクのキーホルダー
+          p.add(G.box(0.28, 0.34, 0.13), UNI.bag, [0, 0.24, -0.17]);
+          p.add(G.box(0.22, 0.12, 0.04), 0x26272c, [0, 0.14, -0.245]);
+          [-1, 1].forEach((s) => p.add(G.box(0.035, 0.36, 0.02), UNI.bag, [s * 0.09, 0.3, 0.1], [0.12, 0, 0]));
+          if (female) p.add(G.sph, 0xf06a9a, [0.1, 0.06, -0.24], null, [0.026, 0.03, 0.018]);
         }
       } else {
         // 戦闘服：ベスト、ポーチ、ベルト、肩ひも、銃
@@ -271,20 +304,20 @@
     const head = new THREE.Group();
     head.position.y = NECK - 0.01;
     hips.add(head);
-    const faceTex = faceTexture({ skin: sk, hair: o.hair || 0x15110e, female: k === 'sailor', mask: k === 'terror' && !o.boss, iris: o.iris, mouth: o.mouth, brow: o.brow, hairline: o.hairline, nape: o.nape, bangs: o.hairStyle === 'long' || o.hairStyle === 'bob', stubble: o.boss, scar: o.boss });
+    const faceTex = faceTexture({ skin: sk, hair: o.hair || 0x15110e, female, mask: k === 'terror' && !o.boss, iris: o.iris, mouth: o.mouth, brow: o.brow, hairline: o.hairline, nape: o.nape, bangs: ['long', 'bob', 'pony', 'heroine'].includes(o.hairStyle), stubble: o.boss, scar: o.boss });
     // 顔は少し自発光させて、天井の照明だけでも表情が読めるようにする
     const face = new THREE.Mesh(headGeo, new THREE.MeshLambertMaterial({ map: faceTex, emissive: 0x4a4a4a, emissiveMap: faceTex }));
     face.position.y = HEAD_C;
     face.scale.set(1, 1.16, 1.04);
     head.add(face);
-    const headKey = 'head|' + k + '|' + (o.hairStyle || '') + '|' + (o.hair || 0) + '|' + sk + '|' + (o.boss ? 1 : 0);
+    const headKey = 'head|' + k + '|' + (o.hairStyle || '') + '|' + (o.hair || 0) + '|' + sk + '|' + (o.boss ? 1 : 0) + '|' + (o.glasses ? 1 : 0) + '|' + (o.ribbon || 0);
     head.add(cached(headKey, () => {
       const p = new P();
       const hc = HEAD_C;
       const earC = k === 'terror' && !o.boss ? 0x1b1c1f : sk;
       [-1, 1].forEach((s) => p.add(G.sph, earC, [s * 0.108, hc - 0.005, -0.005], null, [0.014, 0.03, 0.022]));
       if (!(k === 'terror' && !o.boss)) {
-        p.add(G.sph, sk, [0, hc - 0.016, 0.108], [0.3, 0, 0], [0.011, 0.02, 0.014]);
+        p.add(G.sph, sk, [0, hc - 0.018, 0.106], [0.3, 0, 0], [0.009, 0.016, 0.011]);
       } else {
         p.add(G.sph, 0x1b1c1f, [0, hc - 0.012, 0.11], [0.3, 0, 0], [0.014, 0.024, 0.02]);
         // 額に上げたゴーグル
@@ -318,11 +351,38 @@
           for (let i = -3; i <= 3; i++) p.add(G.box(0.032, 0.05, 0.02), hr, [i * 0.027, hc + 0.098, 0.1 - Math.abs(i) * 0.008], [-0.3, 0, 0]);
           [-1, 1].forEach((s) => p.add(G.box(0.025, st === 'bob' ? 0.14 : 0.2, 0.05), hr, [s * 0.112, hc - (st === 'bob' ? 0.04 : 0.07), 0.035]));
         }
+        if (st === 'heroine') {
+          // 白石さん：毛先の流れる前髪、長い横髪、高い位置のポニーテールと大きな赤いリボン
+          // 前髪：毛先が下を向いた細い房を額に沿って並べる
+          for (let i = -4; i <= 4; i++) {
+            const len = 0.07 + (i % 2 ? 0.012 : 0);
+            p.add(new THREE.ConeGeometry(0.017, len, 4), hr, [i * 0.02, hc + 0.07 - len * 0.35, 0.113 - Math.abs(i) * 0.009], [Math.PI - 0.32, i * 0.05, i * 0.07], [1, 1, 0.45]);
+          }
+          // 顔の横に垂れる細い髪
+          [-1, 1].forEach((s) => {
+            p.add(new THREE.ConeGeometry(0.014, 0.19, 4), hr, [s * 0.1, hc - 0.05, 0.055], [Math.PI, 0, s * 0.06], [1, 1, 0.5]);
+            p.add(new THREE.ConeGeometry(0.014, 0.14, 4), hr, [s * 0.113, hc - 0.02, 0.01], [Math.PI, 0, s * 0.04], [1, 1, 0.5]);
+          });
+          // 高い位置のポニーテール：結び目から背中へ細くなりながら流れる
+          [[0.06, -0.14, 0.058], [-0.04, -0.17, 0.056], [-0.14, -0.18, 0.048], [-0.24, -0.17, 0.038], [-0.32, -0.155, 0.026]].forEach(([y, z, r], i) => {
+            p.add(G.sph, hr, [Math.sin(i * 0.9) * 0.014, hc + y, z], null, [r, 0.075, r * 0.85]);
+          });
+          // 大きな赤いリボン（左右の輪と、垂れる2本）
+          const rb = o.ribbon || 0xc8202c;
+          [-1, 1].forEach((s) => p.add(G.sph, rb, [s * 0.055, hc + 0.105, -0.125], [0.25, 0, s * 0.4], [0.06, 0.038, 0.02]));
+          p.add(G.sph, rb, [0, hc + 0.1, -0.13], null, [0.022, 0.024, 0.02]);
+          [-1, 1].forEach((s) => p.add(G.box(0.026, 0.13, 0.008), rb, [s * 0.026, hc + 0.03, -0.15], [0.2, 0, s * 0.22]));
+        }
+        if (o.glasses) {
+          [-1, 1].forEach((s) => p.add(new THREE.TorusGeometry(0.022, 0.0035, 6, 16), 0x2a2420, [s * 0.04, hc + 0.002, 0.112]));
+          p.add(G.box(0.022, 0.004, 0.004), 0x2a2420, [0, hc + 0.006, 0.114]);
+          [-1, 1].forEach((s) => p.add(G.box(0.004, 0.004, 0.1), 0x2a2420, [s * 0.075, hc + 0.004, 0.065]));
+        }
         if (st === 'long') p.add(new THREE.CylinderGeometry(0.12, 0.14, 0.34, 16, 1, true, Math.PI * 0.55, Math.PI * 0.9), hr, [0, hc - 0.13, -0.01]);
         if (st === 'bob') p.add(new THREE.CylinderGeometry(0.122, 0.13, 0.16, 16, 1, true, Math.PI * 0.5, Math.PI), hr, [0, hc - 0.05, 0]);
         if (st === 'pony') {
           p.add(G.sph, hr, [0, hc + 0.02, -0.14], null, [0.045, 0.1, 0.045]);
-          p.add(G.sph, 0xc8262f, [0, hc + 0.08, -0.125], null, [0.02, 0.02, 0.02]);
+          p.add(G.sph, o.ribbon || 0x2d6b4f, [0, hc + 0.08, -0.125], null, [0.024, 0.02, 0.02]);
         }
       }
       return p;
@@ -335,14 +395,14 @@
       const sh = new THREE.Group();
       sh.position.set(s * 0.2, SHOULDER - 0.01, 0);
       hips.add(sh);
-      sh.add(cached('upper|' + k + '|' + (o.boss ? 1 : 0), () => new P().add(G.cap(0.043, UPPER - 0.07), sleeve, [0, -UPPER / 2, 0])));
+      sh.add(cached('upper|' + k + '|' + outer + '|' + (o.boss ? 1 : 0), () => new P().add(G.cap(0.043, UPPER - 0.07), sleeve, [0, -UPPER / 2, 0])));
       const el = new THREE.Group();
       el.position.y = -UPPER;
       sh.add(el);
-      el.add(cached('fore|' + k + '|' + hand + '|' + s, () => {
+      el.add(cached('fore|' + k + '|' + outer + '|' + hand + '|' + s, () => {
         const p = new P();
         p.add(G.cap(0.038, FORE - 0.08), sleeve, [0, -FORE / 2 + 0.01, 0]);
-        if (k === 'sailor') p.add(G.cyl(0.04, 0.04, 0.025, true), 0xf3f3ef, [0, -FORE + 0.05, 0]);
+        if (k !== 'terror') p.add(G.cyl(0.036, 0.036, 0.02, true), UNI.shirt, [0, -FORE + 0.035, 0]); // シャツの袖口
         // 手のひら・指・親指
         p.add(G.box(0.07, 0.085, 0.03), hand, [0, -FORE - 0.035, 0]);
         for (let i = 0; i < 4; i++) p.add(G.cap(0.008, 0.04), hand, [-0.025 + i * 0.017, -FORE - 0.1, 0.004]);
@@ -354,7 +414,6 @@
     const aL = mkArm(-1), aR = mkArm(1);
 
     // --- 脚 ---
-    const female = k === 'sailor';
     const mkLeg = (s) => {
       const hp = new THREE.Group();
       hp.position.set(s * 0.085, HIP, 0);
@@ -367,18 +426,19 @@
         const p = new P();
         if (female) {
           p.add(G.cap(0.044, SHIN - 0.2), sk, [0, -0.05, 0]);
-          p.add(G.cap(0.046, SHIN - 0.22), 0x1d2131, [0, -SHIN / 2 - 0.06, 0]); // 紺のハイソックス
+          p.add(G.cap(0.046, SHIN - 0.12), UNI.socks, [0, -SHIN / 2 - 0.02, 0]); // 紺のハイソックス
         } else {
           p.add(G.cap(0.05, SHIN - 0.08), pants, [0, -SHIN / 2, 0]);
           if (k === 'terror') p.add(G.box(0.1, 0.09, 0.05), 0x222222, [0, -0.02, 0.045]); // ニーパッド
         }
-        // 靴：生徒は上履き（白に学年色のつま先）、敵はブーツ
+        // 靴：生徒はローファー、敵はブーツ
         if (k === 'terror') {
           p.add(G.box(0.1, 0.12, 0.13), 0x141414, [0, -SHIN + 0.02, 0]);
           p.add(G.box(0.1, 0.07, 0.25), 0x141414, [0, -SHIN - 0.03, 0.05]);
         } else {
-          p.add(G.cap(0.042, 0.15), 0xf1f1ec, [0, -SHIN - 0.025, 0.05], [Math.PI / 2, 0, 0], [1.15, 1, 0.8]);
-          p.add(G.sph, 0x2f6fd0, [0, -SHIN - 0.03, 0.14], null, [0.044, 0.03, 0.03]);
+          const shoe = female ? UNI.loafer : UNI.loaferBoy;
+          p.add(G.cap(0.042, 0.15), shoe, [0, -SHIN - 0.025, 0.05], [Math.PI / 2, 0, 0], [1.15, 1, 0.75]);
+          p.add(G.box(0.07, 0.012, 0.03), 0x2a1810, [0, -SHIN - 0.0, 0.08]);
         }
         return p;
       }));
@@ -456,22 +516,33 @@
   const SKINS = [0xeec3a0, 0xf2cdb0, 0xe2b48f, 0xe9bb98];
   const HAIRS = [0x15110e, 0x231710, 0x2e2015, 0x1a1512, 0x3b2a1c];
   const BOY_STYLES = ['short', 'spiky', 'short'];
-  const GIRL_STYLES = ['long', 'bob', 'pony'];
+  // 女子のモブ：髪型・髪色・リボンの色で区別する（赤いリボンのポニーテールは白石さんだけ）
+  const MOB_GIRLS = [
+    { outer: 'blazer', bow: 'red', hairStyle: 'bob', hair: 0x2a1a12 },
+    { outer: 'cardigan', bow: 'blue', hairStyle: 'long', hair: 0x3b2a1c, glasses: true },
+    { outer: 'blazer', bow: 'blue', hairStyle: 'bob', hair: 0x15110e },
+    { outer: 'cardigan', bow: 'green', hairStyle: 'pony', hair: 0x1a1512, ribbon: 0x2d6b4f },
+  ];
 
-  function player() { return human({ kind: 'gakuran', hair: 0x15110e, hairStyle: 'short' }); }
+  function player() { return human({ kind: 'boy', hair: 0x15110e, hairStyle: 'short', bow: 'red', backpack: true }); }
   function terrorist(boss) {
     return human({ kind: 'terror', boss, skin: boss ? 0xd8a982 : 0xdcae8c, hair: 0x1a1512, brow: 'angry', mouth: 'frown', scale: boss ? 1.16 : 1.1, hairline: boss ? 78 : undefined, nape: boss ? 70 : undefined, iris: 0x2a2a2a });
   }
   function girl() {
-    return human({ kind: 'sailor', hair: 0x2a1a12, hairStyle: 'long', skin: 0xf3d0b6, iris: 0x5a3420, brow: 'worried', mouth: 'calm' });
+    return human({ kind: 'girl', outer: 'cardigan', bow: 'red', hair: 0x5b3824, hairStyle: 'heroine', ribbon: 0xc8202c, backpack: true, skin: 0xf3d0b6, iris: 0x6a4126, brow: 'worried', mouth: 'calm' });
   }
   function student(i) {
     const female = i % 2 === 1;
+    if (female) {
+      const m = MOB_GIRLS[(i >> 1) % MOB_GIRLS.length];
+      return human(Object.assign({ kind: 'girl', skin: SKINS[i % SKINS.length], brow: 'worried', mouth: i % 3 === 0 ? 'open' : 'frown' }, m));
+    }
     return human({
-      kind: female ? 'sailor' : 'gakuran',
+      kind: 'boy',
       skin: SKINS[i % SKINS.length],
       hair: HAIRS[(i * 3) % HAIRS.length],
-      hairStyle: female ? GIRL_STYLES[(i >> 1) % 3] : BOY_STYLES[(i >> 1) % 3],
+      hairStyle: BOY_STYLES[(i >> 1) % 3],
+      bow: ['red', 'blue', 'green'][(i >> 1) % 3],
       brow: 'worried',
       mouth: i % 3 === 0 ? 'open' : 'frown',
     });
