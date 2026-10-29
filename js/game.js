@@ -435,7 +435,6 @@
   // 聞いたヒントが指す範囲（重なった所）。助けたあとは鍵の話の範囲
   function hintRegion() {
     if (G.girlFreed) return G.keyHint && !P.inv.key ? G.keyHint.rect : null;
-    if (G.clueFound) return null;
     let r = null;
     for (const h of G.hints) {
       if (!h.rect) continue;
@@ -919,7 +918,12 @@
     if (G.talk || P.actT > 0) return;
     const e = enemyInReach();
     // 目の前に敵がいなければ、近くの人に話しかける
-    if (!e) { const c = informantNear(); if (c) { startTalk(c); return; } }
+    if (!e) {
+      const c = informantNear();
+      // 吹き出しが出ているときは、もう一度押すと閉じる（同じ人には何度でも話しかけられ、同じ話をしてくれる）
+      if (c && G.say) { G.say = null; hideTalk(); return; }
+      if (c) { startTalk(c); return; }
+    }
     P.actT = 0.35;
     if (!e) { AU.sfx.throw_(); return; }
     P.a = Math.atan2(e.x - P.x, e.z - P.z);
@@ -940,6 +944,7 @@
     AU.sfx.free();
     G.stats.freed++;
     if (S.onRescue) S.onRescue(ctx);
+    G.talk = null; G.say = null; hideTalk();
     // 女の子との会話（ステージに用意があれば）。終わったら元の画面に戻る
     if (S.rescueTalk) startCine(S.rescueTalk, () => { screen = 'play'; show('hud'); });
   }
@@ -1171,12 +1176,13 @@
         const hs = G.hints.map((h) => h.short).join('・');
         return { text: S.texts.find + (hs || G.spot.hint), pos: null, label: '' };
       }
-      return { text: S.texts.rescue, pos: G.girl, label: S.texts.girlLabel };
+      // 話を聞いて探すステージでは、居場所への案内（ルート・目印）は出さない
+      return { text: S.texts.rescue, pos: S.informants ? null : G.girl, label: S.texts.girlLabel };
     }
     if (S.key && !P.inv.key) {
       // 鍵のありかは、誰かに聞くまで分からない（話を聞ける人がいないステージでは最初から案内する）
       if (S.informants && !G.keyHint) return { text: S.key.text + '：' + S.key.ask, pos: null, label: '' };
-      return { text: S.key.text, pos: S.key, label: S.key.label };
+      return { text: S.key.text, pos: S.informants ? null : S.key, label: S.key.label };
     }
     const ex = G.exitPick && !G.closedExits.has(S.exits.indexOf(G.exitPick)) ? G.exitPick : nearestExit();
     return { text: S.exitText, pos: ex, label: ex.label };
@@ -1615,7 +1621,7 @@
     for (const ci of G.informants) dot(ci.x, ci.z, Math.max(3.5, k * 0.55), hasNews(ci) ? '#7fe3ff' : '#5b7a88');
     // 女の子（居場所が分かっていれば）
     const g = G.girl;
-    if (g && (G.girlFreed || G.clueFound)) { c.font = '900 ' + Math.round(Math.max(12, k * 1.6)) + 'px sans-serif'; c.fillStyle = '#ff7aa8'; c.fillText('♥', X(g.x), Z(g.z)); }
+    if (g && (G.girlFreed || (G.clueFound && !S.informants))) { c.font = '900 ' + Math.round(Math.max(12, k * 1.6)) + 'px sans-serif'; c.fillStyle = '#ff7aa8'; c.fillText('♥', X(g.x), Z(g.z)); }
     const o = guideTarget();
     if (o.pos) { c.strokeStyle = '#ffd34d'; c.lineWidth = 2; c.beginPath(); c.arc(X(o.pos.x), Z(o.pos.z), Math.max(7, k * 1.3), 0, Math.PI * 2); c.stroke(); }
     // 自分
