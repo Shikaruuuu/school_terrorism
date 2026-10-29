@@ -194,6 +194,12 @@ TG.STAGES = TG.STAGES || {};
   const NORTH = { x0: 4, z0: 3, x1: 59, z1: 13 }, SOUTH = { x0: 4, z0: 17, x1: 59, z1: 27 }, OUTSIDE = { x0: 0, z0: 28, x1: 63, z1: 45 };
   const line = (short, text, rect) => ({ short, line: '「' + text + '」', rect });
   const JANITOR = { x0: 40, z0: 17, x1: 50, z1: 27 };
+  // クラスメートの立ち絵の割り当て（佐藤くん／男子／女子）
+  const BOY_SATO = { cast: 'sato', faces: ['worried', 'serious', 'relief'] };
+  const BOY = { cast: 'classmate_boy', faces: ['worried', 'serious', 'relief'] };
+  const GIRL_C = { cast: 'classmate_girl', faces: ['worried', 'surprised', 'relief'] };
+  // 職員室に隠れている先生（スーツ姿の3Dモデル）
+  const teacherModel = () => TG.models.human({ kind: 'adultM', top: 0x3a4250, inner: 0xf4f4f0, pants: 0x2e3440, shoes: 0x1c1a18, hair: 0x15120f, hairStyle: 'short', skin: 0xe2b48f, brow: 'worried', mouth: 'frown', scale: 1.05 });
   const RIDDLE = 'この女は別の場所に閉じ込めておけ。', RIDDLE_HINT = '誰か見ていないか？';
 
   TG.STAGES.school = {
@@ -267,15 +273,16 @@ TG.STAGES = TG.STAGES || {};
     informants: {
       count: 4,
       spots: [
-        { i: 100, name: '佐藤くん', ...C(13, 10), face: Math.PI, room: '1a', always: true },
-        { i: 101, name: '高橋さん', ...C(8, 24), face: Math.PI, room: 'staff' },
-        { i: 102, name: '中村くん', ...C(24, 21), face: E, room: 'entr' },
-        { i: 103, name: '小林さん', ...C(46, 25), face: N, room: 'janitor' },
-        { i: 104, name: '山本くん', ...C(50, 32), face: N, room: 'yard' },
-        { i: 105, name: '伊藤さん', ...C(31, 1), face: S, room: 'backyard' },
-        { i: 106, name: '渡辺くん', ...C(57, 11), face: Wd, room: '3a' },
-        { i: 107, name: '加藤さん', ...C(46, 11), face: N, room: 'music' },
-        { i: 109, name: '山田さん', ...C(19, 23), face: Wd, room: 'infirm' },
+        // cast / faces：吹き出しの立ち絵（話しかけ中・ヒント・鍵の話の表情）
+        { i: 100, name: '佐藤くん', ...C(13, 10), face: Math.PI, room: '1a', always: true, ...BOY_SATO },
+        { name: '先生', ...C(8, 24), face: Math.PI, room: 'staff', always: true, cast: 'teacher', faces: ['panic', 'serious', 'relief'], model: teacherModel },
+        { i: 102, name: '中村くん', ...C(24, 21), face: E, room: 'entr', ...BOY },
+        { i: 103, name: '小林さん', ...C(46, 25), face: N, room: 'janitor', ...GIRL_C },
+        { i: 104, name: '山本くん', ...C(50, 32), face: N, room: 'yard', ...BOY },
+        { i: 105, name: '伊藤さん', ...C(31, 1), face: S, room: 'backyard', ...GIRL_C },
+        { i: 106, name: '渡辺くん', ...C(57, 11), face: Wd, room: '3a', ...BOY },
+        { i: 107, name: '加藤さん', ...C(46, 11), face: N, room: 'music', ...GIRL_C },
+        { i: 109, name: '山田さん', ...C(19, 23), face: Wd, room: 'infirm', ...GIRL_C },
       ],
       hints: (spot) => spot.talk,
       // 白石さんを助けたあとに話しかけると、裏門の鍵のありかを教えてくれる
@@ -286,21 +293,30 @@ TG.STAGES = TG.STAGES || {};
       ],
     },
     // 白石さんの立ち絵（表情ごと）。助けたときの会話と、物語の場面で出る
-    faces: {
-      normal: 'assets/shiraishi/normal.jpg', anxious: 'assets/shiraishi/anxious.jpg', relief: 'assets/shiraishi/relief.jpg',
-      surprise: 'assets/shiraishi/surprise.jpg', tears: 'assets/shiraishi/tears.jpg', smile: 'assets/shiraishi/smile.jpg', close: 'assets/shiraishi/close.jpg',
-    },
+    // 会話に出る人物（立ち絵を先に読み込む）。白石さんは救出対象
+    cast: ['shiraishi', 'teacher', 'sato', 'classmate_girl', 'classmate_boy', 'terrorist', 'leader', 'police'],
+    heroine: 'shiraishi',
+    // 白石さんと鍵の場所は、話を聞いて自分で探す（ルート・目印は出さない）
+    noGuide: true,
     rescueTalk: [
-      { w: GIRL, t: '……え？ ' + HERO + 'くん……！？ どうして、ここに……', face: 'surprise' },
+      { who: 'shiraishi', face: 'surprised', t: '……え？ ' + HERO + 'くん……！？ どうして、ここに……' },
       { w: HERO, t: '助けに来た。ケガはない？' },
-      { w: GIRL, t: 'う、うん……大丈夫。でも、外にはあの人たちがいっぱいいて……', face: 'anxious' },
-      { w: GIRL, t: '怖かった……。ずっと、誰も来てくれないんじゃないかって……', face: 'tears' },
+      { who: 'shiraishi', face: 'scared', t: 'う、うん……大丈夫。でも、外にはあの人たちがいっぱいいて……' },
+      { who: 'shiraishi', face: 'tears', t: '怖かった……。ずっと、誰も来てくれないんじゃないかって……' },
       { w: HERO, t: 'もう大丈夫。一緒にここを出よう。裏門から抜けられるはずだ' },
-      { w: GIRL, t: '……うん。' + HERO + 'くんについていく。', face: 'relief' },
+      { who: 'shiraishi', face: 'relief', t: '……うん。' + HERO + 'くんについていく。' },
       { w: HERO, t: 'ただ、裏門には鍵がかかってる。鍵のありかが分かれば……' },
-      { w: GIRL, t: 'みんなも、どこかに隠れてるはずだよ。誰か知ってるかも。聞いてみよう？', face: 'normal' },
-      { w: GIRL, t: '……来てくれて、ありがとう。', face: 'close' },
+      { who: 'shiraishi', face: 'normal', t: 'みんなも、どこかに隠れてるはずだよ。誰か知ってるかも。聞いてみよう？' },
+      { who: 'shiraishi', face: 'close', t: '……来てくれて、ありがとう。' },
     ],
+    // 一緒に逃げている間の白石さんの一言（操作は止めない）
+    barks: {
+      hurt: ['きゃっ……！', '痛っ……！', 'だ、大丈夫……！'],
+      weak: ['ご、ごめん……まだ歩けるから……', 'はぁ、はぁ……置いていかないで……'],
+      calm: ['……行ったみたい。', 'はぁ……見つからなかったね'],
+      key: ['鍵、あったね……！ 早く行こう'],
+      exit: ['裏門……！ もうすぐだよ、' + HERO + 'くん'],
+    },
     names: { hero: HERO, girl: GIRL },
     chars: { player: () => TG.models.player(), girl: () => TG.models.girl(), mob: (i) => TG.models.student(i) },
     clueItem: 'charm',
@@ -310,18 +326,20 @@ TG.STAGES = TG.STAGES || {};
     story: {
       opening: [
         { t: '――5時間目。数学の授業。' },
-        { w: '先生', t: 'じゃあ、この二次方程式を……そうだな、' + HERO + '。' },
+        { who: 'teacher', face: 'serious', t: 'じゃあ、この二次方程式を……そうだな、' + HERO + '。' },
         { t: 'ぼんやり窓の外を眺めながら、僕はいつもの妄想をしていた。' },
         { t: '「もし今、この教室にテロリストが入ってきたら――」' },
         { t: 'ガラッ！！！', fx: 'shake' },
-        { w: '覆面の男', t: '全員動くな！！ この学校は我々が占拠した！' },
+        { who: 'terrorist', face: 'intimidate', t: '全員動くな！！ この学校は我々が占拠した！' },
+        { who: 'teacher', face: 'panic', t: 'み、みんな伏せろ！ 先生の後ろに――' },
+        { who: 'terrorist', face: 'angry', t: '黙れ！ 教師も生徒も、壁際に並べ！' },
         { t: '悲鳴。倒れる椅子。誰かの筆箱が床に散らばる。' },
         { t: '……嘘だろ。妄想が、現実になった。' },
         { t: '混乱のすきに、僕は教室の一番後ろ、掃除用具ロッカーへ滑り込んだ。' },
-        { w: '覆面の男', t: 'おい、そこの女。こっちに来い。' },
-        { w: GIRL, t: 'や……やだ……っ！', face: 'anxious' },
+        { who: 'terrorist', face: 'sneer', t: 'おい、そこの女。こっちに来い。' },
+        { who: 'shiraishi', face: 'scared', t: 'や……やだ……っ！' },
         { t: '白石美月さん。クラスで、いや、学校でいちばん……僕がずっと好きだった人。' },
-        { w: '覆面の男', riddle: true },
+        { who: 'terrorist', face: 'sneer', riddle: true },
         { t: '白石さんは、どこかへ連れていかれた。……どこへ？' },
         { t: 'ほかにも隠れているクラスメートがいるはずだ。誰か、見ていたかもしれない。' },
         { t: '……今、動けるのは僕だけだ。' },
@@ -329,10 +347,13 @@ TG.STAGES = TG.STAGES || {};
       ],
       ending: [
         { t: '裏門の外。パトカーの赤い光の中で、僕たちはやっと足を止めた。' },
-        { w: GIRL, t: '……ありがとう。ずっと、怖かった。', face: 'tears' },
-        { w: GIRL, t: '来てくれるって、なんとなく思ってた。……なんでだろうね。', face: 'smile' },
+        { who: 'shiraishi', face: 'tears', t: '……ありがとう。ずっと、怖かった。' },
+        { who: 'shiraishi', face: 'smile', t: '来てくれるって、なんとなく思ってた。……なんでだろうね。' },
         { w: HERO, t: 'あ、あのさ、白石さん。俺、ずっと――' },
-        { w: '警察官', t: '君たち！ 無事か！！' },
+        { who: 'police', face: 'serious', t: '君たち！ 無事か！！ 中の生徒だな？' },
+        { who: 'police', face: 'relief', t: '……よく2人で出てこられたな。もう大丈夫だ。' },
+        { who: 'police', face: 'gentle', t: '先生やほかの生徒たちも、すぐに助け出す。安心しなさい。' },
+        { who: 'shiraishi', face: 'relief', t: '……よかった。' },
         { t: '……続きは、また今度。' },
       ],
     },

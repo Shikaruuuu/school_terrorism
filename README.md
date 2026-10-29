@@ -36,7 +36,10 @@ python3 -m http.server 8000
 
 新しいステージは `TG.STAGES` に登録します（`js/mall.js` が例）。2階建ては、2階をグリッド上で横にずらして並べ、階段の端の「ポータル」のマスでつなぐ仕組みです。
 - `js/audio.js`：効果音とBGM（WebAudioで合成）
-- `assets/shiraishi/`：白石さんの立ち絵（表情ごと）
+- `js/cast.js`：会話に出る人物（名前・色・表情ごとの立ち絵）の一覧と、敵の一言
+- `assets/chars/`：会話用の立ち絵（`<人物>_<表情>.webp`、縦3:4）。画像のない人物は人物の色のシルエットカードで表示する
+- `docs/character_prompts.md`：立ち絵を画像生成AIで作るためのプロンプトとファイル名の一覧
+- `tools/optimize_portraits.py`：作った立ち絵を600×800のWebPにそろえて `assets/chars/` に入れる
 - `vendor/three.min.js`：Three.js r160（MITライセンス、`vendor/three.LICENSE`）
 
 本作はフィクションです。登場する施設・人物・団体はすべて架空のものです。

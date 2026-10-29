@@ -381,14 +381,20 @@
   function spawnInformants(spot) {
     const I = S.informants;
     if (!I) return;
-    const pool = I.spots.filter((c) => c.room !== spot.room);
-    const chosen = pool.filter((c) => c.always).concat(shuffle(pool.filter((c) => !c.always))).slice(0, I.count);
-    const lines = I.hints(spot);
-    const types = shuffle(Object.keys(lines));
+    // 女の子と同じ部屋の人と、封鎖で行けない場所の人は出さない
+    const seen = reachFrom(P.x, P.z);
+    const pool = I.spots.filter((c) => c.room !== spot.room && reached(seen, c.x, c.z));
+    const chosen = I.pick ? I.pick(pool, shuffle) : pool.filter((c) => c.always).concat(shuffle(pool.filter((c) => !c.always))).slice(0, I.count);
+    const lines = I.hints ? I.hints(spot) : null;
+    const types = lines ? shuffle(Object.keys(lines)) : [];
     chosen.forEach((c, k) => {
-      const vs = lines[types[k % types.length]];
-      const hint = vs[Math.floor(k / types.length) % vs.length];
-      const m = S.chars.mob(c.i);
+      let hint;
+      if (I.hintFor) hint = I.hintFor(spot, c, G);
+      else {
+        const vs = lines[types[k % types.length]];
+        hint = vs[Math.floor(k / types.length) % vs.length];
+      }
+      const m = c.model ? c.model() : S.chars.mob(c.i);
       place(m.group, c.x, c.z);
       m.group.rotation.y = c.face;
       MD.pose(m, 'crouch', false, 0);
@@ -398,7 +404,7 @@
       mark.visible = false;
       dyn.add(mark);
       const keyHint = I.keyHints ? I.keyHints[k % I.keyHints.length] : null;
-      G.informants.push({ x: c.x, z: c.z, name: c.name, hint, keyHint, model: m, mark, talked: false, keyTalked: false });
+      G.informants.push({ x: c.x, z: c.z, name: c.name, cast: c.cast, faces: c.faces || [], hint, keyHint, model: m, mark, talked: false, keyTalked: false });
     });
   }
   function informantNear() {
@@ -412,7 +418,11 @@
   // 話しかける：ひそひそ声でも少し時間がかかり、すぐ近くの敵には聞こえる
   function startTalk(c) {
     P.a = Math.atan2(c.x - P.x, c.z - P.z);
-    if (!hasNews(c)) { say(c.name, askKey() && c.keyHint ? c.keyHint.line : c.hint.line); return; }
+    if (!hasNews(c)) {
+      const kh = askKey() && c.keyHint;
+      say(c.name, kh ? c.keyHint.line : c.hint.line, 5, c.cast, kh ? c.faces[2] : c.faces[1]);
+      return;
+    }
     G.talk = { c, t: 0 };
     makeNoise(P.x, P.z, 2.4, 'talk');
     AU.sfx.text();
@@ -423,13 +433,14 @@
     if (askKey()) {
       c.keyTalked = true;
       G.keyHint = c.keyHint;
-      say(c.name, c.keyHint.line, 6);
+      say(c.name, c.keyHint.line, 6, c.cast, c.faces[2]);
       AU.sfx.pickup();
       return;
     }
     c.talked = true;
-    if (!G.hints.some((h) => h.short === c.hint.short)) G.hints.push(c.hint);
-    say(c.name, c.hint.line, 6);
+    // 道の情報（route）は目的の欄には並べない
+    if (!c.hint.route && !G.hints.some((h) => h.short === c.hint.short)) G.hints.push(c.hint);
+    say(c.name, c.hint.line, 6, c.cast, c.faces[1]);
     AU.sfx.pickup();
   }
   // 聞いたヒントが指す範囲（重なった所）。助けたあとは鍵の話の範囲
@@ -444,17 +455,40 @@
   }
   // 画面上部の吹き出し
   const talkEl = $('talk'), talkWho = $('talkWho'), talkText = $('talkText'), talkBar = $('talkBar');
-  function say(who, text, t) {
+  let talkSlot = null;
+  // who：表示名、cast/face：立ち絵（TG.CAST の人物と表情）
+  function say(who, text, t, cast, face) {
     if (!G) return;
+    talkSlot = talkSlot || makeSlot('talkPort');
     G.say = { t: t || 5 };
     talkWho.textContent = who;
+    talkWho.style.color = cast && TG.CAST[cast] ? TG.CAST[cast].color : '';
     talkText.textContent = text;
     talkBar.hidden = true;
+    if (cast) showPortrait(talkSlot, cast, face); else hidePortrait(talkSlot);
     talkEl.hidden = false;
   }
+  // 動きながら聞こえる短い一言（操作は止めない）。人の話を聞いている最中は割り込まない
+  function bark(key, cast, face, lines, cd) {
+    if (!G || !lines || screen !== 'play' || G.talk) return;
+    if (G.say && !G.say.bark && G.say.t > 1.2) return;
+    G.barkT = G.barkT || {};
+    if (G.barkT[key] > G.time) return;
+    G.barkT[key] = G.time + (cd || 10);
+    const text = Array.isArray(lines) ? lines[Math.floor(Math.random() * lines.length)] : lines;
+    say(TG.CAST[cast] ? TG.CAST[cast].name : '', text, 2.8, cast, face);
+    G.say.bark = true;
+  }
+  // 女の子の一言（ステージの S.barks から）
+  const girlBark = (key, face, cd) => { if (S.barks && S.barks[key] && G.girl && G.girl.hp > 0) bark('g-' + key, S.heroine, face, S.barks[key], cd); };
   function hideTalk() { talkEl.hidden = true; }
   function updateTalkUI(dt) {
     if (G.talk) {
+      if (talkWho.textContent !== G.talk.c.name || talkText.textContent !== '（ひそひそ……）') {
+        talkSlot = talkSlot || makeSlot('talkPort');
+        talkWho.style.color = TG.CAST[G.talk.c.cast] ? TG.CAST[G.talk.c.cast].color : '';
+        if (G.talk.c.cast) showPortrait(talkSlot, G.talk.c.cast, G.talk.c.faces[0]); else hidePortrait(talkSlot);
+      }
       talkWho.textContent = G.talk.c.name;
       talkText.textContent = '（ひそひそ……）';
       talkBar.hidden = false;
@@ -608,6 +642,7 @@
     setPath(e, x, z);
     showMark(e, '?', '#ffd23f', 2.2);
     if (fresh && dist(e, P) < 16) AU.sfx.huh();
+    if (fresh && sameFloor(e, P) && dist(e, P) < 11) bark('huh', e.boss ? 'leader' : 'terrorist', 'intimidate', TG.BARKS.huh, 14);
     if (loud) e.susp = Math.max(e.susp, 0.4);
   }
 
@@ -620,6 +655,7 @@
       AU.sfx.alert();
       AU.bgm('alert');
       flash('alert');
+      bark('spot', e.boss ? 'leader' : 'terrorist', 'angry', e.boss ? TG.BARKS.bossSpot : TG.BARKS.spot, 6);
     }
     showMark(e, '!', '#ff3b30', 1.8);
     e.reactT = 0.7;
@@ -719,7 +755,9 @@
     G.stats.girlDamage = (G.stats.girlDamage || 0) + n;
     AU.sfx.hit();
     flash('hurtGirl');
-    if (g.hp <= 0) { g.hp = 0; gameOver('girl'); }
+    if (g.hp <= 0) { g.hp = 0; gameOver('girl'); return; }
+    if (g.hp < 40) girlBark('weak', 'tears', 25);
+    else girlBark('hurt', 'scared', 9);
   }
 
   function updateEnemy(e, dt) {
@@ -954,7 +992,7 @@
       if (it.taken || Math.hypot(it.x - P.x, it.z - P.z) > 0.9) continue;
       it.taken = true;
       dyn.remove(it.model); dyn.remove(it.glow);
-      if (it.type === 'key') P.inv.key = 1;
+      if (it.type === 'key') { P.inv.key = 1; if (G.girlFreed) girlBark('key', 'relief', 99); }
       if (it.type === S.clueItem) G.clueFound = true;
       AU.sfx.pickup();
     }
@@ -1139,6 +1177,7 @@
       G.evaT -= dt;
       if (G.evaT <= 0) {
         G.phase = 'sneak';
+        if (G.girlFreed) girlBark('calm', 'relief', 40);
         AU.bgm('sneak');
         for (const e of G.enemies) if (e.state === 'search') { e.state = 'return'; e.path = null; }
       }
@@ -1174,15 +1213,15 @@
       if (!G.clueFound && dist(P, G.girl) > 7) {
         // クラスメートから聞いた話があれば、それを並べる
         const hs = G.hints.map((h) => h.short).join('・');
-        return { text: S.texts.find + (hs || G.spot.hint), pos: null, label: '' };
+        return { text: S.texts.find + (S.keepSpotHint && hs ? G.spot.hint + '・' + hs : hs || G.spot.hint), pos: null, label: '' };
       }
       // 話を聞いて探すステージでは、居場所への案内（ルート・目印）は出さない
-      return { text: S.texts.rescue, pos: S.informants ? null : G.girl, label: S.texts.girlLabel };
+      return { text: S.texts.rescue, pos: S.noGuide ? null : G.girl, label: S.texts.girlLabel };
     }
     if (S.key && !P.inv.key) {
       // 鍵のありかは、誰かに聞くまで分からない（話を聞ける人がいないステージでは最初から案内する）
       if (S.informants && !G.keyHint) return { text: S.key.text + '：' + S.key.ask, pos: null, label: '' };
-      return { text: S.key.text, pos: S.informants ? null : S.key, label: S.key.label };
+      return { text: S.key.text, pos: S.noGuide ? null : S.key, label: S.key.label };
     }
     const ex = G.exitPick && !G.closedExits.has(S.exits.indexOf(G.exitPick)) ? G.exitPick : nearestExit();
     return { text: S.exitText, pos: ex, label: ex.label };
@@ -1621,7 +1660,7 @@
     for (const ci of G.informants) dot(ci.x, ci.z, Math.max(3.5, k * 0.55), hasNews(ci) ? '#7fe3ff' : '#5b7a88');
     // 女の子（居場所が分かっていれば）
     const g = G.girl;
-    if (g && (G.girlFreed || (G.clueFound && !S.informants))) { c.font = '900 ' + Math.round(Math.max(12, k * 1.6)) + 'px sans-serif'; c.fillStyle = '#ff7aa8'; c.fillText('♥', X(g.x), Z(g.z)); }
+    if (g && (G.girlFreed || (G.clueFound && !S.noGuide))) { c.font = '900 ' + Math.round(Math.max(12, k * 1.6)) + 'px sans-serif'; c.fillStyle = '#ff7aa8'; c.fillText('♥', X(g.x), Z(g.z)); }
     const o = guideTarget();
     if (o.pos) { c.strokeStyle = '#ffd34d'; c.lineWidth = 2; c.beginPath(); c.arc(X(o.pos.x), Z(o.pos.z), Math.max(7, k * 1.3), 0, Math.PI * 2); c.stroke(); }
     // 自分
@@ -1766,15 +1805,51 @@
   }
 
   let cine = null;
-  // 会話の立ち絵（ステージの S.faces に表情ごとの画像。行に face があれば出す）
-  const faceEl = $('cineFace'), faceCache = {};
-  function preloadFaces() {
-    if (!S.faces) return;
-    for (const k in S.faces) if (!faceCache[S.faces[k]]) { const im = new Image(); im.src = S.faces[k]; faceCache[S.faces[k]] = im; }
+  // ---------- 立ち絵（TG.CAST の人物と表情）。会話シーンと吹き出しの両方で使う ----------
+  // 画像が読み込めない人物・表情は、同じ人物の別の表情 → 人物の色のシルエットカード、の順で代わりに出す
+  const imgState = {};
+  const portraits = [];
+  function makeSlot(id) {
+    const root = $(id);
+    const slot = { root, img: root.querySelector('img'), card: root.querySelector('.pcard'), who: null, face: null };
+    slot.img.addEventListener('error', () => { slot.img.hidden = true; slot.card.hidden = false; });
+    portraits.push(slot);
+    return slot;
   }
+  function loadImg(src) {
+    if (!src || imgState[src]) return;
+    imgState[src] = 'loading';
+    const im = new Image();
+    im.onload = () => { imgState[src] = 'ok'; portraits.forEach((sl) => { if (sl.who) showPortrait(sl, sl.who, sl.face); }); };
+    im.onerror = () => { imgState[src] = 'fail'; portraits.forEach((sl) => { if (sl.who) showPortrait(sl, sl.who, sl.face); }); };
+    im.src = src;
+  }
+  function showPortrait(slot, who, face) {
+    const c = TG.CAST[who];
+    slot.who = who; slot.face = face;
+    slot.root.hidden = !c;
+    if (!c) return;
+    slot.root.style.setProperty('--pc', c.color);
+    let src = TG.castImage(who, face);
+    loadImg(src);
+    if (imgState[src] !== 'ok') {
+      const alt = Object.values(c.faces).find((f) => imgState[f] === 'ok');
+      if (alt) src = alt;
+    }
+    const ok = imgState[src] === 'ok';
+    if (ok && slot.img.getAttribute('src') !== src) slot.img.src = src;
+    slot.img.hidden = !ok;
+    slot.card.hidden = ok;
+  }
+  function hidePortrait(slot) { slot.who = null; slot.root.hidden = true; }
+  // ステージで使う人物の画像を先に読み込んでおく
+  function preloadFaces() {
+    (S.cast || []).forEach((who) => { const c = TG.CAST[who]; if (c) Object.values(c.faces).forEach(loadImg); });
+  }
+  const cineSlot = makeSlot('cinePort');
   function startCine(lines, done) {
-    cine = { lines, i: -1, done, faces: !!(S && S.faces && lines.some((l) => l.face)) };
-    faceEl.hidden = true;
+    cine = { lines, i: -1, done, faces: lines.some((l) => l.who && TG.CAST[l.who]) };
+    hidePortrait(cineSlot);
     $('cine').classList.toggle('has-face', cine.faces);
     screen = 'cine';
     show('cine');
@@ -1785,13 +1860,16 @@
     cine.i++;
     if (cine.i >= cine.lines.length) { const d = cine.done; cine = null; d(); return; }
     const l = cine.lines[cine.i];
-    $('cineWho').textContent = l.w || '';
-    $('cineWho').hidden = !l.w;
+    const who = l.who && TG.CAST[l.who];
+    const name = l.w || (who ? who.name : '');
+    $('cineWho').textContent = name;
+    $('cineWho').hidden = !name;
+    $('cineWho').style.color = who ? who.color : '';
     $('cineText').textContent = l.t;
     if (cine.faces) {
-      // 表情が変わる行で絵を差し替える。ほかの人が話す間は、少し暗くして残す
-      if (l.face && S.faces[l.face]) { faceEl.src = S.faces[l.face]; faceEl.hidden = false; }
-      faceEl.classList.toggle('dim', !l.face);
+      // 話している人の立ち絵を出す。主人公の台詞や地の文の間は、直前の人を少し暗くして残す
+      if (who) showPortrait(cineSlot, l.who, l.face);
+      cineSlot.root.classList.toggle('dim', !who);
     }
     $('cineCount').textContent = cine.i + 1 + ' / ' + cine.lines.length;
     if (l.fx === 'shake') { shake = 0.6; AU.sfx.door(); AU.sfx.hit(); flash('white'); }
@@ -1810,7 +1888,7 @@
     };
     // コンティニュー時はオープニングを飛ばす
     if (quick) begin();
-    else startCine(S.story.opening.map((l) => (l.riddle ? { w: l.w, t: G.spot.riddle } : l)), begin);
+    else startCine(S.story.opening.map((l) => (l.riddle ? Object.assign({}, l, { t: G.spot.riddle }) : l)), begin);
   }
 
   function pause(on) {
@@ -1982,7 +2060,10 @@
       G.guideT -= dt;
       if (G.guideT <= 0) {
         G.guideT = 0.5;
-        if (G.girlFreed && (!S.key || P.inv.key)) G.exitPick = bestExit();
+        if (G.girlFreed && (!S.key || P.inv.key)) {
+          G.exitPick = bestExit();
+          if (G.exitPick && Math.hypot(M.wx(P.x) - G.exitPick.x, P.z - G.exitPick.z) < 12 && sameFloor(P, G.exitPick)) girlBark('exit', 'relief', 999);
+        }
         const o = objective();
         G.guide = o.pos ? findPath(P.x, P.z, o.pos.x, o.pos.z) : null;
       }

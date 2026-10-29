@@ -149,8 +149,9 @@ body.in-locker #lockerView { display: block; }
   box-shadow: inset 0 0 70px 20px rgba(0,0,0,.5);
 }
 /* ---------- 演出 ---------- */
-#talk { position: absolute; top: calc(max(10px, env(safe-area-inset-top, 0px)) + 34px); left: 50%; transform: translateX(-50%); width: max-content; max-width: min(460px, 52vw); background: rgba(4,7,6,.84); border: 1px solid rgba(127,227,255,.45); border-radius: 8px; padding: 5px 12px 6px; font-size: 13.5px; line-height: 1.5; pointer-events: none; }
+#talk { display: flex; gap: 9px; align-items: center; position: absolute; top: calc(max(10px, env(safe-area-inset-top, 0px)) + 34px); left: 50%; transform: translateX(-50%); width: max-content; max-width: min(460px, 52vw); background: rgba(4,7,6,.84); border: 1px solid rgba(127,227,255,.45); border-radius: 8px; padding: 5px 12px 6px; font-size: 13.5px; line-height: 1.5; pointer-events: none; }
 #talkWho { display: block; font-size: 11px; color: #7fe3ff; letter-spacing: .08em; }
+.talk-body { min-width: 0; }
 #talkBar { display: block; height: 3px; margin-top: 4px; background: #7fe3ff; border-radius: 2px; width: 0; }
 #bigmap { position: fixed; inset: 0; z-index: 7; background: rgba(4,9,7,.9); touch-action: none; }
 #bigmapC { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -169,8 +170,14 @@ body.in-locker #lockerView { display: block; }
 #cine.has-face .cine-foot { margin-top: 0; }
 #cine.has-face { background: radial-gradient(ellipse at 50% 40%, rgba(40,20,24,.55), rgba(4,7,6,.82)); }
 .cine-stage { min-height: 0; height: 100%; display: flex; align-items: flex-end; justify-content: center; padding-top: max(10px, env(safe-area-inset-top, 0px)); }
-#cineFace { height: 100%; max-height: 520px; width: auto; aspect-ratio: 142 / 184; object-fit: cover; border-radius: 14px 14px 0 0; box-shadow: 0 0 40px rgba(255,143,182,.25); transition: filter .25s; animation: faceIn .35s ease-out; }
-#cineFace.dim { filter: brightness(.55) saturate(.8); }
+/* 立ち絵（画像がなければ人物の色のシルエットカード） */
+.portrait { position: relative; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 12px; background: #11161a; box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 0 36px color-mix(in srgb, var(--pc, #ff8fb6) 30%, transparent); }
+.portrait img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pcard { width: 100%; height: 100%; background: radial-gradient(circle at 50% 30%, rgba(255,255,255,.18), transparent 60%), linear-gradient(to bottom, rgba(0,0,0,.05), rgba(0,0,0,.65)), var(--pc, #6a7a80); }
+.pcard svg { width: 100%; height: 100%; display: block; fill: rgba(8,12,14,.55); }
+.portrait.big { height: 100%; max-height: 520px; transition: filter .25s; animation: faceIn .35s ease-out; }
+.portrait.big.dim { filter: brightness(.55) saturate(.8); }
+.portrait.small { flex: 0 0 auto; width: 42px; border-radius: 6px; align-self: center; }
 @keyframes faceIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 #cineWho { display: inline-block; font-size: 13px; color: var(--pink); margin-bottom: 4px; font-weight: 700; }
 #cineText { margin: 0; font-size: clamp(15px, 2.4vw, 19px); line-height: 1.75; min-height: 3.4em; }
@@ -282,7 +289,7 @@ body.in-locker #lockerView { display: block; }
     <canvas id="radar" width="150" height="150" aria-label="レーダー"></canvas>
     <button type="button" class="icon-btn" id="btnPause" aria-label="ポーズ">II</button>
   </div>
-  <div id="talk" hidden><b id="talkWho"></b><span id="talkText"></span><i id="talkBar" hidden></i></div>
+  <div id="talk" hidden><div id="talkPort" class="portrait small" hidden><img alt="" hidden><div class="pcard" hidden><svg viewBox="0 0 120 160" aria-hidden="true"><circle cx="60" cy="58" r="27"/><path d="M14 160c2-42 22-62 46-62s44 20 46 62z"/></svg></div></div><div class="talk-body"><b id="talkWho"></b><span id="talkText"></span><i id="talkBar" hidden></i></div></div>
   <div id="susp"></div>
   <div id="wp" hidden><span id="wpArrow">▼</span><span id="wpLabel"></span></div>
   <div class="keys-help"><kbd>WASD</kbd> 移動　<kbd>Shift</kbd> 走る　<kbd>E</kbd> 殴る　<kbd>C</kbd> しゃがむ　<kbd>M</kbd> 地図　マウス 視点</div>
@@ -302,7 +309,7 @@ body.in-locker #lockerView { display: block; }
 <div id="flash"></div>
 
 <section id="cine" hidden>
-  <div class="cine-stage"><img id="cineFace" alt="" hidden></div>
+  <div class="cine-stage"><div id="cinePort" class="portrait big" hidden><img alt="" hidden><div class="pcard" hidden><svg viewBox="0 0 120 160" aria-hidden="true"><circle cx="60" cy="58" r="27"/><path d="M14 160c2-42 22-62 46-62s44 20 46 62z"/></svg></div></div></div>
   <div class="cine-box">
     <span id="cineWho" hidden></span>
     <p id="cineText"></p>
@@ -362,6 +369,7 @@ body.in-locker #lockerView { display: block; }
 <script src="vendor/three.min.js"></script>
 <script src="js/map.js"></script>
 <script src="js/models.js"></script>
+<script src="js/cast.js"></script>
 <script src="js/characters.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/world.js"></script>

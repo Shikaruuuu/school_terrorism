@@ -429,10 +429,10 @@ TG.STAGES = TG.STAGES || {};
       .map((cells, i) => ({ kind: 'shut', exit: i, sign: '閉鎖', cells })),
     // 上下の階のつなぎ：エスカレーター2基（止まる）、非常階段2つ（シャッター）
     links: [
-      { kind: 'bar', sign: '停止中', cells: cellsX(22, 23, 24, 0).concat(cellsX(22, 23, 17, 1)) },
-      { kind: 'bar', sign: '停止中', cells: cellsX(32, 33, 17, 0).concat(cellsX(32, 33, 24, 1)) },
-      { kind: 'shut', sign: '閉鎖', cells: cellsZ(10, 1, 2, 0).concat(cellsZ(3, 1, 2, 1)) },
-      { kind: 'shut', sign: '閉鎖', cells: cellsZ(45, 1, 2, 0).concat(cellsZ(52, 1, 2, 1)) },
+      { kind: 'bar', sign: '停止中', name: '西のエスカレーター', cells: cellsX(22, 23, 24, 0).concat(cellsX(22, 23, 17, 1)) },
+      { kind: 'bar', sign: '停止中', name: '東のエスカレーター', cells: cellsX(32, 33, 17, 0).concat(cellsX(32, 33, 24, 1)) },
+      { kind: 'shut', sign: '閉鎖', name: '西の非常階段', cells: cellsZ(10, 1, 2, 0).concat(cellsZ(3, 1, 2, 1)) },
+      { kind: 'shut', sign: '閉鎖', name: '東の非常階段', cells: cellsZ(45, 1, 2, 0).concat(cellsZ(52, 1, 2, 1)) },
     ],
     // 通路のバリケード：北と南の通路、バックヤード、2階の吹き抜けの両脇の渡り廊下
     cuts: both((fl) => [cellsZ(10, 13, 16, fl), cellsZ(29, 13, 16, fl), cellsZ(45, 13, 16, fl), cellsZ(17, 25, 28, fl), cellsZ(38, 25, 28, fl), cellsZ(30, 1, 2, fl)])
@@ -453,6 +453,13 @@ TG.STAGES = TG.STAGES || {};
     return out;
   };
   const START = { x: 23.5, z: 36.5 };
+  // 通路のバリケードの場所を言葉にする（「2階の北側の通路の東寄り」など）
+  function cutName(c) {
+    const [x, z] = c.cells[0], fl = x >= OFF ? '2階' : '1階', lx = x % OFF;
+    if (z <= 2) return fl + 'のバックヤード';
+    if (z === 20) return fl + 'の吹き抜けの' + (lx < 30 ? '西' : '東') + '側の渡り廊下';
+    return fl + 'の' + (z < 20 ? '北' : '南') + '側の通路の' + (lx < 20 ? '西寄り' : lx < 40 ? '真ん中' : '東寄り');
+  }
 
   function makePlan(ctx, stage, spot, diff) {
     const len = (a, b) => { const q = ctx.findPath(a.x, a.z, b.x, b.z); return q ? q.length : 1e9; };
@@ -592,6 +599,10 @@ TG.STAGES = TG.STAGES || {};
   ].map(([x, z], i) => ({ x: x + 0.5, z: z + 0.5, face: (i * 1.7) % (Math.PI * 2), i }));
 
   const HERO = 'カズヤ', GIRL = '美咲';
+  // 話を聞ける人の立ち絵と3Dモデル
+  const WOMAN = { cast: 'mall_woman', faces: ['worried', 'serious', 'serious'] };
+  const MAN = { cast: 'mall_man', faces: ['panic', 'serious', 'serious'] };
+  const CLERK = { cast: 'clerk', faces: ['worried', 'serious', 'serious'], model: () => TG.models.human({ kind: 'adultF', top: 0x2f6b5a, skirt: 0x2a2a2e, pants: 0x2a2a2e, shoes: 0x1c1a18, hair: 0x2a1c14, hairStyle: 'pony', skin: 0xeec4a4, brow: 'worried', mouth: 'frown' }) };
 
   TG.STAGES.mall = {
     id: 'mall',
@@ -669,16 +680,71 @@ TG.STAGES = TG.STAGES || {};
     // charm は近くの通路に落ちている美咲のショッピングバッグ（拾うと居場所が分かる）
     girlSpots: [
       { id: 'cafe', room: 'cafe0', pos: C(25, 5), face: -Math.PI / 2, hint: 'コーヒーの香りがする店？', riddle: 'つかまっちゃった……コーヒーのいい匂いがする',
-        charm: C(20, 14), guard: [[22, 6, 4, E, S], [20, 10, 3, N, E]] },
+        charm: C(20, 14), guard: [[22, 6, 4, E, S], [20, 10, 3, N, E]],
+        talk: { short: '1階の北側の店', line: '「1階の北側のお店のほうに、若い女の人が連れていかれるのを見たわ」', rect: { x0: 0, z0: 3, x1: 55, z1: 12 } } },
       { id: 'cinema', room: 'cinema1', pos: C(51, 4, 1), face: 0, hint: '大きなスクリーンのある暗い所？', riddle: '暗い……大きなスクリーンが見える',
-        charm: C(47, 14, 1), guard: [[F2(48), 4, 4, E, Wd], [F2(48), 10, 3, N]] },
+        charm: C(47, 14, 1), guard: [[F2(48), 4, 4, E, Wd], [F2(48), 10, 3, N]],
+        talk: { short: '2階の北側', line: '「2階の北側……奥のほうへ歩かされてた。暗い所だったわ」', rect: { x0: 60, z0: 3, x1: 115, z1: 12 } } },
       { id: 'apparel', room: 'apparel0', pos: C(1, 20), face: Math.PI / 2, hint: '試着室のある店？', riddle: 'カーテンと鏡がいっぱいのところにいる',
-        charm: C(16, 22), guard: [[6, 20, 4, Wd, E], [11, 21, 3, Wd]] },
+        charm: C(16, 22), guard: [[6, 20, 4, Wd, E], [11, 21, 3, Wd]],
+        talk: { short: '1階の西寄り', line: '「1階の西のほうのお店に入っていくのを見ました」', rect: { x0: 0, z0: 0, x1: 19, z1: 39 } } },
       { id: 'arcade', room: 'arcade1', pos: C(53, 20, 1), face: -Math.PI / 2, hint: 'ゲームの音がうるさい店？', riddle: 'ゲームの音がうるさくて、何も聞こえない',
-        charm: C(37, 22, 1), guard: [[F2(46), 20, 3, E, Wd], [F2(50), 21, 3, E]] },
+        charm: C(37, 22, 1), guard: [[F2(46), 20, 3, E, Wd], [F2(50), 21, 3, E]],
+        talk: { short: '2階の東寄り', line: '「2階の東のほう……にぎやかなお店のあたりに連れていかれたわ」', rect: { x0: 96, z0: 0, x1: 115, z1: 39 } } },
       { id: 'food', room: 'food1', pos: C(52, 37, 1), face: Math.PI, hint: 'いろんな料理の匂いがする所？', riddle: 'いろんな料理の匂いがする、広いところ……',
-        charm: C(47, 27, 1), guard: [[F2(46), 34, 3, E, S], [F2(50), 31, 3, S]] },
+        charm: C(47, 27, 1), guard: [[F2(46), 34, 3, E, S], [F2(50), 31, 3, S]],
+        talk: { short: '2階の南側', line: '「2階の南側の、広いところに連れていかれたみたい」', rect: { x0: 60, z0: 25, x1: 115, z1: 39 } } },
     ],
+    // 会話に出る人物（立ち絵を先に読み込む）。美咲は救出対象
+    cast: ['misaki', 'mall_woman', 'mall_man', 'clerk', 'terrorist', 'leader', 'police'],
+    heroine: 'misaki',
+    // 目的の欄は、美咲のメッセージの手がかりに、聞いた話を足していく
+    keepSpotHint: true,
+    // 話を聞ける人：女性客は美咲を見かけた場所、男性客と店員は封鎖の様子（どの道が使えないか）を教えてくれる
+    informants: {
+      spots: [
+        { i: 201, name: '買い物客の女性', ...C(4, 37), face: N, room: 'drug0', ...WOMAN },
+        { i: 203, name: '買い物客の女性', ...C(2, 10, 1), face: E, room: 'books1', ...WOMAN },
+        { i: 205, name: '買い物客の女性', ...C(16, 37, 1), face: N, room: 'glasses1', ...WOMAN },
+        { i: 207, name: '買い物客の女性', ...C(32, 38), face: N, room: 'flower0', ...WOMAN },
+        { i: 202, name: '買い物客の男性', ...C(43, 20), face: E, room: 'electro0', ...MAN },
+        { i: 204, name: '買い物客の男性', ...C(12, 23, 1), face: N, room: 'interior1', ...MAN },
+        { i: 206, name: '買い物客の男性', ...C(13, 10), face: Wd, room: 'sport0', ...MAN },
+        { name: '店員', ...C(48, 31), face: S, room: 'bakery0', ...CLERK },
+        { name: '店員', ...C(20, 10, 1), face: S, room: 'toys1', ...CLERK },
+      ],
+      // 3人（女性客・男性客・店員）を1人ずつ、行ける場所からランダムに
+      pick: (pool, shuffle) => ['mall_woman', 'mall_man', 'clerk'].map((k) => shuffle(pool.filter((c) => c.cast === k))[0]).filter(Boolean),
+      hintFor(spot, c, G) {
+        const closed = (G.closure && G.closure.closed) || [];
+        const st = TG.STAGES.mall;
+        if (c.cast === 'mall_woman') return spot.talk;
+        if (c.cast === 'mall_man') {
+          const ex = closed.find((q) => q.exit !== undefined);
+          const where = ex ? st.exits[ex.exit].label + 'はシャッターで閉められてた。あそこからは出られない。' : '出口はまだ全部は閉められてないみたいだ。';
+          return { route: true, short: '', rect: null, line: '「' + where + 'それと……あいつら、人質が逃げたら近くの出口も閉めるって無線で話してたぞ」' };
+        }
+        const link = closed.find((q) => q.name);
+        const cut = closed.find((q) => q.sign === '立入禁止');
+        const a = link ? link.name + 'は止められてます。上と下を行き来するなら、別の道を使ってください。' : '';
+        const b = cut ? cutName(cut) + 'も、バリケードでふさがれてました' : '';
+        return { route: true, short: '', rect: null, line: '「' + (a + b || '今のところ、通れない所は見ていません') + '」' };
+      },
+    },
+    rescueTalk: [
+      { who: 'misaki', face: 'surprised', t: HERO + '……！？ 本当に、' + HERO + 'なの……？' },
+      { w: HERO, t: '遅くなってごめん。ケガは？' },
+      { who: 'misaki', face: 'scared', t: '大丈夫……。でも、さっきから出口のシャッターが次々に閉められてるの' },
+      { who: 'misaki', face: 'joy', t: '……でも、来てくれるって信じてた。' },
+      { w: HERO, t: '一緒に出よう。今度は絶対に、手を離さない' },
+      { who: 'misaki', face: 'relief', t: 'うん。私も走れる。出口は2人で探そう' },
+    ],
+    barks: {
+      hurt: ['っ……！ 平気、まだ走れる！', 'きゃっ……！'],
+      weak: ['ごめん、少しだけ……すぐ追いつくから', 'はぁ……大丈夫、まだ行ける'],
+      calm: ['……行ったみたい。今のうちに', 'ふぅ……見つからなかったね'],
+      exit: ['出口……！ ' + HERO + '、あと少し！'],
+    },
     names: { hero: HERO, girl: GIRL },
     chars: { player: () => TG.models.mallPlayer(), girl: () => TG.models.mallGirl(), mob: (i) => TG.models.civilian(i) },
     clueItem: 'bag',
@@ -688,25 +754,30 @@ TG.STAGES = TG.STAGES || {};
     story: {
       opening: [
         { t: '日曜の午後。駅前のショッピングモール。' },
-        { w: GIRL, t: 'ねえ' + HERO + '、次は2階の雑貨……じゃなくて、アクセサリー見に行こ？' },
+        { who: 'misaki', face: 'smile', t: 'ねえ' + HERO + '、次は2階の雑貨……じゃなくて、アクセサリー見に行こ？' },
         { t: '付き合って3年。ポケットの中には、小さな箱が入っている。今日こそ渡すつもりだった。' },
         { t: 'パンッ、パンッ！！', fx: 'shake' },
-        { w: '覆面の男', t: '全員伏せろ！！ このモールは我々が占拠した！' },
+        { who: 'misaki', face: 'surprised', t: 'えっ……今の、なに……？' },
+        { who: 'terrorist', face: 'intimidate', t: '全員伏せろ！！ このモールは我々が占拠した！' },
         { t: '悲鳴。逃げまどう人の波。つないでいた手が、ほどけた。' },
+        { who: 'misaki', face: 'scared', t: HERO + '……っ！' },
         { w: HERO, t: GIRL + '！！ ' + GIRL + 'ーっ！！' },
         { t: '気づけば俺は、靴屋の倉庫のロッカーに隠れていた。' },
         { t: 'ガラガラガラ……館内のあちこちで、シャッターが下りていく音がする。' },
         { t: 'スマホが震える。' + GIRL + 'からのメッセージだ。' },
-        { w: GIRL + '（メッセージ）', riddle: true },
+        { w: GIRL + '（メッセージ）', who: 'misaki', face: 'scared', riddle: true },
         { t: '……それきり、既読はつかない。' },
         { t: GIRL + 'を見つけて、2人でここから出る。絶対に。' },
       ],
       ending: [
         { t: '重い扉を押し開けると、夕方の風が吹き込んできた。' },
-        { w: GIRL, t: '……' + HERO + '。来てくれるって、信じてた。' },
+        { who: 'misaki', face: 'joy', t: '……' + HERO + '。来てくれるって、信じてた。' },
         { w: HERO, t: '当たり前だろ。……あのさ、' + GIRL + '。' },
         { t: 'ポケットの小さな箱は、まだそこにあった。' },
-        { w: '警察官', t: '大丈夫ですか！ こちらへ！！' },
+        { who: 'police', face: 'serious', t: '大丈夫ですか！ こちらへ！！ 中の人ですね？' },
+        { who: 'police', face: 'relief', t: '2人とも無事でよかった。……よく、ここまで来ましたね' },
+        { who: 'police', face: 'gentle', t: '中の人たちも、必ず助け出します。もう安心してください' },
+        { who: 'misaki', face: 'relief', t: '……うん。' + HERO + '、ありがとう' },
         { t: '……プロポーズは、もう少し落ち着いてからにしよう。' },
       ],
     },
