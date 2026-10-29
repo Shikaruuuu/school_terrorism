@@ -21,16 +21,12 @@
   // ===================== レンダラ =====================
   const canvas = $('view');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: !isTouch, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isTouch ? 1.5 : 2));
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x9fb4c4);
-  scene.fog = new THREE.Fog(0x9fb4c4, 22, 60);
   const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
   scene.add(camera);
-  scene.add(new THREE.HemisphereLight(0xeef2ff, 0x4a4030, 0.95));
-  const sun = new THREE.DirectionalLight(0xfff0d8, 0.75);
-  sun.position.set(18, 40, 26);
-  scene.add(sun);
+  // 空・光・影・ポスト処理・画質は gfx.js に任せる
+  const GFX = TG.gfx;
+  GFX.init(renderer, scene, camera);
   // ステージの3D。作るのは最初に遊ぶときの1回だけで、切り替えは表示・非表示で行う
   const stageWorld = {};
   let worldRefs = null;
@@ -40,7 +36,7 @@
   function resize() {
     // 実際に表示されているキャンバスの大きさに合わせる
     const w = canvas.clientWidth || window.innerWidth, h = canvas.clientHeight || window.innerHeight;
-    renderer.setSize(w, h, false);
+    GFX.resize(w, h);
     camera.aspect = w / h;
     // 一人称視点。縦長の画面では少し広めに
     camera.fov = w / h < 1 ? 80 : 70;
@@ -127,8 +123,8 @@
     }
     stageWorld[id].group.visible = true;
     worldRefs = stageWorld[id].refs;
-    scene.background.setHex(S.sky);
-    scene.fog.color.setHex(S.sky);
+    GFX.setLightSources(worldRefs.lightSources || []);
+    GFX.setLook(S.look);
     allocPath();
     drawMap();
   }
@@ -280,7 +276,7 @@
       if (!m.isMesh || m.geometry.type === 'CircleGeometry') return;
       m.material = m.material.clone();
       m.material.transparent = true;
-      m.material.opacity = 0.7;
+      m.material.opacity = 0.9;
     });
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.42, 28), new THREE.MeshBasicMaterial({ color: 0x7fe3ff, transparent: true, opacity: 0.85, depthWrite: false }));
     ring.rotation.x = -Math.PI / 2;
@@ -328,6 +324,8 @@
       place(m.group, h.x, h.z);
       m.group.rotation.y = h.face;
       MD.pose(m, 'sit', false, 0);
+      // 座っている人質は影を落とさない（数が多く、影の描画が重くなるため）
+      m.group.traverse((o) => { if (o.isMesh) o.castShadow = false; });
       dyn.add(m.group);
       G.hostages.push({ x: h.x, z: h.z, model: m });
     });
@@ -509,7 +507,17 @@
     const idx = [];
     for (let i = 1; i <= CONE_RAYS; i++) idx.push(0, i, i + 1);
     geo.setIndex(idx);
-    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xfff27a, transparent: true, opacity: 0.17, depthWrite: false, side: THREE.DoubleSide }));
+    // 懐中電灯の光のように、敵から離れるほど薄くなる扇（加算で光る）
+    const mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+      uniforms: { color: { value: new THREE.Color(0xfff27a) }, opacity: { value: 0.17 }, center: { value: new THREE.Vector3() }, range: { value: 9 } },
+      vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: 'uniform vec3 color, center; uniform float opacity, range; varying vec3 vP; void main(){ float d = clamp(distance(vP.xz, center.xz) / range, 0.0, 1.0); float a = opacity * pow(1.0 - d, 1.3) * 1.6; gl_FragColor = vec4(color * a, 1.0); }',
+    });
+    // 互換のため color / opacity を本体の値に見せる
+    Object.defineProperty(mat, 'opacity', { get: () => mat.uniforms.opacity.value, set: (v) => { if (mat.uniforms) mat.uniforms.opacity.value = v; } });
+    mat.color = mat.uniforms.color.value;
+    const mesh = new THREE.Mesh(geo, mat);
     mesh.frustumCulled = false;
     mesh.renderOrder = 2;
     return mesh;
@@ -526,6 +534,8 @@
     const range = enemyRange(e), fov = enemyFov(e);
     const ox = M.wx(e.x) - e.x, oy = M.wy(e.x, e.z) + 0.05;
     pos[0] = e.x + ox; pos[1] = oy; pos[2] = e.z;
+    e.cone.material.uniforms.center.value.set(pos[0], oy, pos[2]);
+    e.cone.material.uniforms.range.value = range;
     for (let i = 0; i <= CONE_RAYS; i++) {
       const ang = e.a - fov + (2 * fov * i) / CONE_RAYS;
       const dx = Math.sin(ang), dz = Math.cos(ang);
@@ -655,6 +665,7 @@
       AU.sfx.alert();
       AU.bgm('alert');
       flash('alert');
+      GFX.flash(0xff2a20, 0.35);
       bark('spot', e.boss ? 'leader' : 'terrorist', 'angry', e.boss ? TG.BARKS.bossSpot : TG.BARKS.spot, 6);
     }
     showMark(e, '!', '#ff3b30', 1.8);
@@ -983,6 +994,7 @@
     G.stats.freed++;
     if (S.onRescue) S.onRescue(ctx);
     G.talk = null; G.say = null; hideTalk();
+    GFX.flash(0xffe2c8, 0.55);
     // 女の子との会話（ステージに用意があれば）。終わったら元の画面に戻る
     if (S.rescueTalk) startCine(S.rescueTalk, () => { screen = 'play'; show('hud'); });
   }
@@ -1714,6 +1726,8 @@
       G.girl.heart.position.y = M.wy(G.girl.x, G.girl.z) + 1.5 + Math.sin(t * 3) * 0.1;
       G.girl.heart.visible = G.clueFound || dist(P, G.girl) < 7;
     }
+    // 座っている人質は、遠くて見えないうちは描かない（壁の向こうの教室など）
+    for (const h of G.hostages) h.model.group.visible = sameFloor(h, P) && dist(P, h) < 22;
     for (const c of G.informants) {
       c.mark.visible = hasNews(c) && sameFloor(c, P) && dist(P, c) < 14;
       if (c.mark.visible) place(c.mark, c.x, c.z, 1.45 + Math.sin(t * 3 + c.x) * 0.06);
@@ -2033,6 +2047,8 @@
   $('resume').addEventListener('click', () => pause(false));
   $('restart').addEventListener('click', () => { startStage(G.stage, G.diff, true); });
   $('quitBtn').addEventListener('click', toTitle);
+  $('qualityBtn').addEventListener('click', () => { $('qualityBtn').textContent = '画質：' + GFX.cycleQuality(); });
+  $('qualityBtn').textContent = '画質：' + GFX.qualityLabel;
   $('muteBtn').addEventListener('click', () => { AU.setMuted(!AU.isMuted()); $('muteBtn').textContent = AU.isMuted() ? '音：OFF' : '音：ON'; });
   $('continueBtn').addEventListener('click', () => { startStage(G.stage, G.diff, true); });
   $('overTitle').addEventListener('click', toTitle);
@@ -2085,7 +2101,16 @@
       camera.lookAt(tc.x, 0, tc.z);
       worldRefs.policeLights.forEach((m, i) => { m.visible = (Math.floor(t * 4) + i) % 2 === 0; });
     }
-    renderer.render(scene, camera);
+    if (worldRefs.update) worldRefs.update(t, dt);
+    // 画面の演出：見つかった・危険・会話中・2人でいる
+    const fxT = GFX.fx;
+    fxT.alert = G && screen === 'play' && G.phase === 'alert' ? 1 : 0;
+    fxT.danger = G && screen === 'play' && (P.hp < 35 || (G.girlFreed && G.girl.hp < 35)) ? 1 : 0;
+    fxT.dim = screen === 'cine' || screen === 'map' ? 1 : 0;
+    fxT.warm = G && G.girlFreed ? 0.6 : 0;
+    if (G) GFX.setFocus(M.wx(P.x), M.wy(P.x, P.z), P.z);
+    else GFX.setFocus(S.titleCam.x, 0, S.titleCam.z);
+    GFX.render(dt, t);
     requestAnimationFrame(frame);
   }
 

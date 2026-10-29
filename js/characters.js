@@ -3,12 +3,29 @@
 (function () {
   const MD = TG.models;
   const V3 = THREE.Vector3;
-  const VC = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  // 人物の質感：布や肌らしいつや消しのPBRに、輪郭を浮かせるリムライトを足す（背景に埋もれないように）
+  TG.rim = TG.rim || { color: { value: new THREE.Color(0.35, 0.3, 0.28) } };
+  function withRim(m) {
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.rimColor = TG.rim.color;
+      sh.fragmentShader = 'uniform vec3 rimColor;\n' + sh.fragmentShader.replace('#include <opaque_fragment>', [
+        '#include <opaque_fragment>',
+        'float rimK = 1.0 - abs(dot(normalize(normal), normalize(vViewPosition)));',
+        'gl_FragColor.rgb += rimColor * pow(rimK, 3.0);',
+      ].join('\n'));
+    };
+    m.customProgramCacheKey = () => 'rim';
+    return m;
+  }
+  const VC = withRim(new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.78, metalness: 0, envMapIntensity: 0.6 }));
   const col = new THREE.Color();
+  const LOWPOLY = TG.mat && TG.mat.isTouch;
 
   // ---------- ジオメトリをまとめる ----------
   function P() { this.items = []; }
   P.prototype.add = function (geo, color, pos, rot, scale) {
+    // ボタン・指先などの小さな部品は、粗い球で十分
+    if (geo === G.sph && scale && Math.max(scale[0], scale[1], scale[2]) < 0.035) geo = G.sphLo;
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rot ? rot[0] : 0, rot ? rot[1] : 0, rot ? rot[2] : 0));
     m.compose(new V3(pos[0], pos[1], pos[2]), q, new V3(scale ? scale[0] : 1, scale ? scale[1] : 1, scale ? scale[2] : 1));
@@ -55,7 +72,7 @@
     const k = w + ',' + h + ',' + d;
     if (rboxCache[k]) return rboxCache[k];
     const r = Math.min(w, h, d) * 0.45;
-    const geo = new THREE.BoxGeometry(w, h, d, 5, 5, 5);
+    const geo = new THREE.BoxGeometry(w, h, d, LOWPOLY ? 3 : 5, LOWPOLY ? 3 : 5, LOWPOLY ? 3 : 5);
     const pos = geo.attributes.position, nor = geo.attributes.normal;
     const hx = w / 2 - r, hy = h / 2 - r, hz = d / 2 - r;
     const v = new THREE.Vector3(), inner = new THREE.Vector3(), n = new THREE.Vector3();
@@ -77,10 +94,12 @@
 
   // よく使う形（なめらかに見えるよう分割は細かめ）
   const G = {
-    sph: new THREE.SphereGeometry(1, 24, 16),
-    sphHi: new THREE.SphereGeometry(1, 28, 20),
-    cap: (r, l) => new THREE.CapsuleGeometry(r, l, 6, 14),
-    cyl: (rt, rb, h, open) => new THREE.CylinderGeometry(rt, rb, h, 24, 1, !!open),
+    // スマホでは分割を少し粗くして、頂点の数を抑える（見た目の丸さはほぼ変わらない）
+    sph: new THREE.SphereGeometry(1, LOWPOLY ? 16 : 24, LOWPOLY ? 11 : 16),
+    sphHi: new THREE.SphereGeometry(1, LOWPOLY ? 20 : 28, LOWPOLY ? 14 : 20),
+    sphLo: new THREE.SphereGeometry(1, 10, 7),
+    cap: (r, l) => new THREE.CapsuleGeometry(r, l, r < 0.015 ? 2 : LOWPOLY ? 4 : 6, r < 0.015 ? 6 : LOWPOLY ? 10 : 14),
+    cyl: (rt, rb, h, open) => new THREE.CylinderGeometry(rt, rb, h, LOWPOLY ? 16 : 24, 1, !!open),
     box: roundedBox,
   };
 
@@ -228,7 +247,7 @@
     x.lineTo(l + r, t + h); x.quadraticCurveTo(l, t + h, l, t + h - r);
     x.lineTo(l, t + r); x.quadraticCurveTo(l, t, l + r, t); x.closePath();
   }
-  const headGeo = new THREE.SphereGeometry(0.112, 32, 24);
+  const headGeo = new THREE.SphereGeometry(0.112, LOWPOLY ? 24 : 32, LOWPOLY ? 18 : 24);
 
   // ---------- 体の寸法 ----------
   const HIP = 0.88, THIGH = 0.41, SHIN = 0.41, UPPER = 0.27, FORE = 0.25, SHOULDER = 0.41, NECK = 0.56, HEAD_C = 0.115;
@@ -363,7 +382,7 @@
     hips.add(head);
     const faceTex = faceTexture({ skin: sk, hair: o.hair || 0x15110e, female, mask: k === 'terror' && !o.boss, iris: o.iris, mouth: o.mouth, brow: o.brow, hairline: o.hairline, nape: o.nape, bangs: ['long', 'bob', 'pony', 'heroine'].includes(o.hairStyle), stubble: o.boss, scar: o.boss });
     // 顔は少し自発光させて、天井の照明だけでも表情が読めるようにする
-    const face = new THREE.Mesh(headGeo, new THREE.MeshLambertMaterial({ map: faceTex, emissive: 0x4a4a4a, emissiveMap: faceTex }));
+    const face = new THREE.Mesh(headGeo, withRim(new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.55, emissive: 0x2a2a2a, emissiveMap: faceTex, envMapIntensity: 0.5 })));
     face.position.y = HEAD_C;
     face.scale.set(1, 1.16, 1.04);
     head.add(face);
@@ -517,6 +536,13 @@
     g.add(shadow);
 
     if (o.scale) body.scale.setScalar(o.scale);
+    // 敵：無線機の赤いランプ（暗い所で目立つ）
+    if (k === 'terror') {
+      const led = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 6), TG.mat.glow(o.boss ? 0xffc040 : 0xff2a20, 6));
+      led.position.set(0.115, HEAD_C + 0.02, 0.02);
+      head.add(led);
+    }
+    g.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = false; } });
     return { group: g, body, hips, head, aL, aR, lL, lR, kind: k, walkT: Math.random() * 6 };
   }
 

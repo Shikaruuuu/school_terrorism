@@ -216,6 +216,17 @@ TG.STAGES = TG.STAGES || {};
       return r;
     },
     sky: 0x9fb4c4,
+    // 見た目：事件のあとの夕方。南西から低い夕日、廊下は薄暗く、窓だけが燃えるように明るい
+    look: {
+      sky: [0x2a3566, 0xf08a52, 0x2a2026], sunGlow: 0xff9a50, sunDir: [-0.55, 0.36, 0.78],
+      fog: [0x5a4a58, 0.016],
+      hemi: [0xa8a8c8, 0x2a2430, 0.5],
+      rim: 0x8a5a40,
+      sun: [0xffa060, 3.2],
+      env: { base: 0x302a34, floor: 0x3a3028, panels: [[0, 2, 14.8, 26, 4, 0.2, 0xffa060, 1.3], [0, 9.8, 0, 22, 0.2, 22, 0xdfe4f0, 0.9], [-14.8, 3, 0, 0.2, 3, 20, 0x8a90c0, 0.6]] },
+      exposure: 1.0, bloom: 0.55, bloomThr: 1.1, vignette: 0.55, sat: 1.06,
+      lift: [0.02, 0.012, 0.035], gain: [1.03, 0.98, 0.94], tint: [1, 1, 1],
+    },
     par: 420,
     titleCam: { x: 32, z: 22, r: 34, h: 26 },
     // カメラの高さの上限（屋内は天井の少し下）

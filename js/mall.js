@@ -44,7 +44,7 @@ TG.STAGES = TG.STAGES || {};
   function store(id, name, x0, z0, x1, z1, col, sign) {
     rooms.push({ id: id + FL, name: (FL ? '2F ' : '1F ') + name, x0: X(x0), z0, x1: X(x1), z1 });
     paint(x0, z0, x1, z1, col);
-    STORES.push({ fl: FL, name, sign });
+    STORES.push({ fl: FL, name, sign, x0: X(x0), z0, x1: X(x1), z1 });
   }
 
   // ---------------- 両方の階に共通の骨組み ----------------
@@ -205,213 +205,319 @@ TG.STAGES = TG.STAGES || {};
 
   // ======================= 3D =======================
   function build(group) {
-    const L = (c, o) => new THREE.MeshLambertMaterial(Object.assign({ color: c }, o || {}));
+    const MT = TG.mat;
+    const { merge, inst, cv, B, CY } = MT;
     const add = (m) => { if (m) group.add(m); return m; };
     const list = (pred) => {
       const out = [];
       for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) if (pred(get(x, z), x, z)) out.push({ x, z, t: get(x, z), d: deco[idx(x, z)] });
       return out;
     };
-    const col = new THREE.Color();
-    function inst(geo, material, items, place) {
-      if (!items.length) return null;
-      const mesh = new THREE.InstancedMesh(geo, material, items.length);
-      const o = new THREE.Object3D();
-      items.forEach((c, i) => {
-        o.position.set(0, 0, 0); o.rotation.set(0, 0, 0); o.scale.set(1, 1, 1);
-        const color = place(o, c);
-        o.updateMatrix();
-        mesh.setMatrixAt(i, o.matrix);
-        if (color !== undefined) mesh.setColorAt(i, col.set(color));
-      });
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      return add(mesh);
-    }
     const fy = (x) => (x >= OFF ? FLOOR_H : 0);
     const wxc = (x) => map.wx(x) + 0.5;
+    const FONT = '"Zen Kaku Gothic New", "Hiragino Sans", sans-serif';
+    const storeAt = (x, z) => STORES.find((s) => x >= s.x0 && x <= s.x1 && z >= s.z0 && z <= s.z1);
 
-    // 外の地面と駐車場
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(240, 240), L(0x3a3e41));
-    ground.rotation.x = -Math.PI / 2; ground.position.set(FW / 2, -0.06, FH / 2); add(ground);
-    for (let i = 0; i < 14; i++) {
-      const line = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 5), new THREE.MeshBasicMaterial({ color: 0xd8d8d0 }));
-      line.rotation.x = -Math.PI / 2; line.position.set(6 + i * 3.4, -0.05, FH + 6); add(line);
-    }
-
-    // 床（2階の床は1階の天井も兼ねる）
-    const floorCells = list((t, x) => t !== T.WALL && t !== T.GAP && t !== T.VOID && !(x < OFF && (t === T.STAIR || t === T.PORTAL)));
-    inst(new THREE.BoxGeometry(1, 0.22, 1), L(0xffffff), floorCells, (o, c) => {
-      o.position.set(wxc(c.x), fy(c.x) - 0.11, c.z + 0.5);
-      const fc = floorCol[idx(c.x, c.z)] || 0xd9d4ca;
-      return (c.x + c.z) & 1 ? fc : new THREE.Color(fc).multiplyScalar(0.94).getHex();
+    // ===================== 外：駐車場・パトカー・まわりの街 =====================
+    const asph = MT.surface('asphalt');
+    const ground = add(new THREE.Mesh(new THREE.PlaneGeometry(260, 260), asph));
+    ground.rotation.x = -Math.PI / 2; ground.position.set(FW / 2, -0.06, FH / 2); ground.receiveShadow = true;
+    inst(group, B(0.12, 0.01, 5), MT.plain(0xe8e4d8, 0.6), Array.from({ length: 16 }, (_, i) => i), (o, i) => { o.position.set(4 + i * 3.2, -0.045, FH + 6); }, 'receive');
+    const lights = [];
+    const carBody = MT.plain(0xf2f2f2, 0.25, 0.3), carDark = MT.plain(0x101214, 0.2, 0.4);
+    const car = (x, z, rot) => {
+      const g = new THREE.Group();
+      const part = (w, h, d, m, y, zz) => { const p = new THREE.Mesh(B(w, h, d), m); p.position.set(0, y, zz); p.castShadow = true; g.add(p); };
+      part(1.8, 0.55, 4.2, carBody, 0.55, 0); part(1.82, 0.32, 4.22, carDark, 0.36, 0); part(1.62, 0.5, 2.1, carDark, 1.05, -0.2);
+      const r = new THREE.Mesh(B(0.42, 0.16, 0.3), MT.glow(0xff1a10, 5)); r.position.set(-0.3, 1.38, -0.2);
+      const b = new THREE.Mesh(B(0.42, 0.16, 0.3), MT.glow(0x1a40ff, 5)); b.position.set(0.3, 1.38, -0.2);
+      g.add(r, b); lights.push(r, b);
+      g.position.set(x, 0, z); g.rotation.y = rot; group.add(g);
+    };
+    car(22, FH + 5, Math.PI / 2.3); car(34, FH + 5.5, -Math.PI / 2.2); car(-5, 15, 0.1); car(FW + 5, 27, -0.1);
+    const cityWin = cv(128, 256, (x, w, h) => { x.fillStyle = '#1a1e26'; x.fillRect(0, 0, w, h); for (let r = 0; r < 16; r++) for (let c = 0; c < 8; c++) if (Math.random() < 0.4) { x.fillStyle = Math.random() < 0.6 ? '#ffd890' : '#cfe0ff'; x.fillRect(c * 16 + 4, r * 16 + 4, 8, 9); } });
+    cityWin.wrapS = cityWin.wrapT = THREE.RepeatWrapping;
+    [[-22, 10, 14, 24, 22], [FW + 22, 30, 16, 30, 16], [20, -18, 40, 12, 26], [40, FH + 26, 50, 12, 14]].forEach(([x, z, w, d, h]) => {
+      const t = cityWin.clone(); t.needsUpdate = true; t.repeat.set(Math.max(w, d) / 8, h / 8);
+      const m = add(new THREE.Mesh(B(w, h, d), new THREE.MeshStandardMaterial({ color: 0x30343c, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.8, map: t, roughness: 0.6 })));
+      m.position.set(x, h / 2, z);
+    });
+    // 建物の外壁（外から見たとき用。中の壁の外側にもう一枚）
+    const facade = MT.surface('concrete', 0xb8b4ac);
+    [[FW / 2, -0.1, FW + 0.4, 0.2], [FW / 2, FH + 0.1, FW + 0.4, 0.2], [-0.1, FH / 2, 0.2, FH], [FW + 0.1, FH / 2, 0.2, FH]].forEach(([x, z, w, d]) => {
+      const m = add(new THREE.Mesh(B(w, FLOOR_H + 4.2, d), facade)); m.position.set(x, (FLOOR_H + 4.2) / 2, z); m.castShadow = true; m.receiveShadow = true;
     });
 
-    // 壁：店の正面は濃い色、ほかは明るい色。1階は2階の床の下まで、2階は天井まで
+    // ===================== 床 =====================
+    // 通路は磨いたテラゾー（照明が映り込む）。店は種類ごとに木・タイル・カーペット
+    const WOOD = ['カフェ', 'ベーカリー', '書店', 'レストラン', '靴', '雑貨', '楽器', 'インテリア', 'おもちゃ'];
+    const CARPET = ['シネマ', 'ゲームセンター', 'アパレル', 'アクセサリー', 'メガネ'];
+    const floorMats = {
+      terrazzo: MT.surface('terrazzo'), wood: MT.surface('wood', 0xe0c8a8), carpet: MT.surface('fabric', 0xffffff, { uvScale: 1.5 }),
+      tile: MT.surface('tile', 0xf4f4f0), concrete: MT.surface('concrete', 0xb0aca4),
+    };
+    const fl = { terrazzo: [], wood: [], carpet: [], tile: [], concrete: [] };
+    list((t, x) => t !== T.WALL && t !== T.GAP && t !== T.VOID && !(x < OFF && (t === T.STAIR || t === T.PORTAL))).forEach((c) => {
+      const st = storeAt(c.x, c.z);
+      let k = 'terrazzo';
+      if (c.z <= 2) k = 'concrete';
+      else if (st) k = WOOD.includes(st.name) ? 'wood' : CARPET.includes(st.name) ? 'carpet' : 'tile';
+      c.col = floorCol[idx(c.x, c.z)] || 0xd9d4ca;
+      fl[k].push(c);
+    });
+    Object.keys(fl).forEach((k) => inst(group, B(1, 0.22, 1), floorMats[k], fl[k], (o, c) => {
+      o.position.set(wxc(c.x), fy(c.x) - 0.11, c.z + 0.5);
+      if (k === 'carpet') return new THREE.Color(c.col).lerp(new THREE.Color(0xffffff), 0.15).getHex();
+      if (k === 'wood' || k === 'tile') return new THREE.Color(c.col).lerp(new THREE.Color(0xffffff), 0.55).getHex();
+      if (k === 'terrazzo' && c.x >= OFF) return 0xe8e0d0;
+      return undefined;
+    }, 'receive'));
+
+    // ===================== 壁 =====================
+    // 店の正面：濃い色の枠と、映り込みのある暗いガラス（中は見えない＝ゲームの見通しと同じ）。上に看板の帯
     const walls = list((t) => t === T.WALL);
     const storefront = (x, z) => { const lx = map.wx(x); return z === 12 || z === 29 || ((lx === 14 || lx === 41) && z >= 17 && z <= 24); };
-    inst(new THREE.BoxGeometry(1, 1, 1), L(0xffffff), walls, (o, c) => {
-      const h = c.x >= OFF ? 4.0 : FLOOR_H - 0.22;
-      o.scale.set(1, h, 1);
-      o.position.set(wxc(c.x), fy(c.x) + h / 2, c.z + 0.5);
-      return storefront(c.x, c.z) ? 0x3b4654 : (c.x + c.z) % 3 ? 0xece8e0 : 0xe4dfd5;
+    const frontCells = walls.filter((c) => storefront(c.x, c.z));
+    const plainCells = walls.filter((c) => !storefront(c.x, c.z));
+    const wallH = (x) => (x >= OFF ? 4.0 : FLOOR_H - 0.22);
+    const plaster = MT.surface('plaster', 0xf2eee6);
+    inst(group, B(1, 1, 1), plaster, plainCells.filter((c) => c.z > 3), (o, c) => { const h = wallH(c.x); o.scale.set(1, h, 1); o.position.set(wxc(c.x), fy(c.x) + h / 2, c.z + 0.5); });
+    inst(group, B(1, 1, 1), MT.surface('concrete', 0xa8a49c), plainCells.filter((c) => c.z <= 3), (o, c) => { const h = wallH(c.x); o.scale.set(1, h, 1); o.position.set(wxc(c.x), fy(c.x) + h / 2, c.z + 0.5); });
+    // 店の正面：下の腰板・暗いガラス・上の看板帯
+    const frontMetal = MT.plain(0x2a2e34, 0.35, 0.7);
+    inst(group, B(1.01, 0.5, 1.01), frontMetal, frontCells, (o, c) => { o.position.set(wxc(c.x), fy(c.x) + 0.25, c.z + 0.5); });
+    const shopGlow = cv(128, 256, (x, w, h) => {
+      const g = x.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, '#fff2d8'); g.addColorStop(0.5, '#c89a6a'); g.addColorStop(1, '#5a4030');
+      x.fillStyle = g; x.fillRect(0, 0, w, h);
+      x.fillStyle = 'rgba(255,255,255,.45)'; x.fillRect(0, 10, w, 5);
     });
-    // 店の正面の上の帯（看板の下地）
-    const fronts = walls.filter((c) => storefront(c.x, c.z));
-    inst(new THREE.BoxGeometry(1.01, 0.5, 1.01), L(0xf3efe6), fronts, (o, c) => {
-      o.position.set(wxc(c.x), fy(c.x) + (c.x >= OFF ? 3.4 : 3.6), c.z + 0.5);
+    inst(group, B(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x3a4048, roughness: 0.06, metalness: 0.5, envMapIntensity: 1.6, emissive: 0xffffff, emissiveMap: shopGlow, emissiveIntensity: 0.32 }), frontCells, (o, c) => { o.scale.set(1, 2.7, 1); o.position.set(wxc(c.x), fy(c.x) + 0.5 + 1.35, c.z + 0.5); });
+    inst(group, B(1.02, 1, 1.02), MT.plain(0xe8e4dc, 0.6), frontCells, (o, c) => { const top = wallH(c.x) - 3.2; o.scale.set(1, top, 1); o.position.set(wxc(c.x), fy(c.x) + 3.2 + top / 2, c.z + 0.5); });
+    // ガラスの縦の桟
+    inst(group, B(0.05, 2.7, 1.04), frontMetal, frontCells.filter((c) => (c.x + c.z) % 2 === 0), (o, c) => {
+      const lx = map.wx(c.x), vert = (lx === 14 || lx === 41) && c.z >= 17 && c.z <= 24;
+      o.position.set(wxc(c.x) + (vert ? 0 : -0.5), fy(c.x) + 1.85, c.z + 0.5);
+      if (!vert) o.rotation.y = 0; else { o.rotation.y = Math.PI / 2; o.position.set(wxc(c.x), fy(c.x) + 1.85, c.z); }
+    });
+    // 店の入口の上の枠
+    const doorTops = list((t, x, z) => t === T.FLOOR && storefront(x, z) && get(x, z) !== T.WALL);
+    inst(group, B(1, 0.6, 1), MT.plain(0x2a2e34, 0.35, 0.7), doorTops, (o, c) => { const h = wallH(c.x); o.position.set(wxc(c.x), fy(c.x) + h - 0.9, c.z + 0.5); });
+
+    // 天井：1階の天井（2階の床の裏）と2階の天井。照明のパネル
+    const ceilMat = MT.surface('ceil', 0xffffff);
+    const under = list((t, x, z) => x < OFF && !(x >= 20 && x <= 35 && z >= 17 && z <= 24) && t !== T.GAP);
+    inst(group, new THREE.PlaneGeometry(1, 1), ceilMat, under, (o, c) => { o.rotation.x = Math.PI / 2; o.position.set(c.x + 0.5, FLOOR_H - 0.23, c.z + 0.5); }, false);
+    const ceil2 = add(new THREE.Mesh(new THREE.PlaneGeometry(FW, FH), ceilMat));
+    ceil2.rotation.x = Math.PI / 2; ceil2.position.set(FW / 2, FLOOR_H + 4.0, FH / 2);
+    // 吹き抜けの天窓（夕方の空）と、差し込む光
+    const sky = add(new THREE.Mesh(new THREE.PlaneGeometry(16, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 0.62, 0.95).multiplyScalar(1.6), toneMapped: false })));
+    sky.rotation.x = Math.PI / 2; sky.position.set(28, FLOOR_H + 3.98, 21);
+    inst(group, B(0.12, 0.12, 8), MT.plain(0x2a2e34, 0.4, 0.7), [20, 22, 24, 26, 28, 30, 32, 34, 36].map((x) => ({ x })), (o, c) => { o.position.set(c.x, FLOOR_H + 3.92, 21); }, false);
+    const shaftMat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      uniforms: { color: { value: new THREE.Color(0.55, 0.65, 0.95) } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: 'uniform vec3 color; varying vec2 vUv; void main(){ float a = smoothstep(0.0,0.2,vUv.x)*smoothstep(1.0,0.8,vUv.x)*pow(vUv.y,1.5)*0.16; gl_FragColor = vec4(color*a,1.0); }',
+    });
+    [[24, 19], [28, 22], [32, 19.5], [26, 21]].forEach(([x, z], i) => {
+      const m = add(new THREE.Mesh(new THREE.PlaneGeometry(2.2, FLOOR_H + 4), shaftMat));
+      m.position.set(x, (FLOOR_H + 4) / 2, z); m.rotation.y = i * 0.8; m.rotation.z = 0.08;
     });
 
-    // 天井（2階の上）と吹き抜けの天窓
-    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(FW, FH), L(0xe9e6dc, { emissive: 0x6a675e }));
-    ceil.rotation.x = Math.PI / 2; ceil.position.set(FW / 2, FLOOR_H + 4.0, FH / 2); add(ceil);
-    const sky = new THREE.Mesh(new THREE.PlaneGeometry(16, 8), new THREE.MeshBasicMaterial({ color: 0xcfe6f5 }));
-    sky.rotation.x = Math.PI / 2; sky.position.set(28, FLOOR_H + 3.98, 21); add(sky);
-    // 照明
-    const lights = [];
-    for (let fl = 0; fl < 2; fl++) for (let z = 2; z < FH; z += 4) for (let x = 2; x < FW; x += 4) {
-      const gx = x + fl * OFF;
-      if (fl === 0 && x >= 20 && x <= 35 && z >= 17 && z <= 24) continue;
-      if (get(gx, z) === T.WALL) continue;
-      lights.push({ x: gx, z });
+    // 照明：天井の光る板。近くのものだけ本物の光になる（gfx の光源プール）
+    const panels = [], off = [], sources = [];
+    for (let fl2 = 0; fl2 < 2; fl2++) for (let z = 2; z < FH; z += 3) for (let x = 2; x < FW; x += 4) {
+      const gx = x + fl2 * OFF;
+      if (fl2 === 0 && x >= 20 && x <= 35 && z >= 17 && z <= 24) continue;
+      if (fl2 === 1 && get(gx, z) === T.VOID) continue;
+      if (get(gx, z) === T.WALL || get(gx, z) === T.GAP) continue;
+      const y = fl2 ? FLOOR_H + 3.97 : FLOOR_H - 0.25;
+      const st = storeAt(gx, z);
+      const k = (x * 5 + z * 7 + fl2) % 9;
+      const c = { x: gx, z, y };
+      if (k === 0) { off.push(c); continue; }
+      panels.push(c);
+      sources.push({ x: wxc(gx), y: y - 0.2, z: z + 0.5, color: st ? 0xfff0dc : 0xf4f6ff, intensity: st ? 4 : 3.4, distance: 7.5 });
     }
-    inst(new THREE.BoxGeometry(1.4, 0.05, 0.3), new THREE.MeshBasicMaterial({ color: 0xf6f8ff }), lights, (o, c) => {
-      o.position.set(wxc(c.x), fy(c.x) + (c.x >= OFF ? 3.97 : FLOOR_H - 0.25), c.z + 0.5);
-    });
+    inst(group, B(1.6, 0.04, 0.5), MT.glow(0xfff6ea, 2.4), panels, (o, c) => { o.position.set(wxc(c.x), c.y, c.z + 0.5); }, false);
+    inst(group, B(1.6, 0.04, 0.5), MT.plain(0x5a5e62, 0.4), off, (o, c) => { o.position.set(wxc(c.x), c.y, c.z + 0.5); }, false);
+    // 赤い非常灯（出入口と吹き抜け）：ゆっくり点滅
+    const beacons = [[1, 13], [54, 25.5], [40.5, 1], [27, 38], [20, 16.5], [35, 25]].map(([x, z]) => ({ x, z }));
+    const beaconMat = MT.glow(0xff2a1a, 5).clone();
+    inst(group, new THREE.SphereGeometry(0.11, 12, 8), beaconMat, beacons, (o, c) => { o.position.set(c.x + 0.5, 3.6, c.z + 0.5); }, false);
+    const beaconSrc = beacons.map((c) => ({ x: c.x + 0.5, y: 3.3, z: c.z + 0.5, color: 0xff2a14, intensity: 5, distance: 9, flicker: () => 0.4 + 0.6 * Math.max(0, Math.sin(performance.now() * 0.004)) }));
+    sources.push(...beaconSrc);
 
-    // 階段・エスカレーター（1階のマスに段を積む）
+    // ===================== 階段・エスカレーター =====================
     const steps = list((t, x) => t === T.STAIR && x < OFF);
     const escal = (c) => c.z >= 17 && c.z <= 24;
-    inst(new THREE.BoxGeometry(1, 1, 1), L(0xffffff), steps, (o, c) => {
-      const h = Math.max(0.05, stairY(c.x + 0.5, c.z + 0.5));
-      o.scale.set(1, h, 1);
-      o.position.set(c.x + 0.5, h / 2, c.z + 0.5);
-      return escal(c) ? ((c.z + c.x) & 1 ? 0x7d848c : 0x6f767e) : 0xb9b4aa;
-    });
-    // エスカレーターの側面（手すり）
+    inst(group, B(1, 1, 1), MT.surface('brushed', 0x8a9096), steps.filter(escal), (o, c) => { const h = Math.max(0.05, stairY(c.x + 0.5, c.z + 0.5)); o.scale.set(1, h, 1); o.position.set(c.x + 0.5, h / 2, c.z + 0.5); });
+    inst(group, B(1, 1, 1), MT.surface('concrete', 0xc0bcb2), steps.filter((c) => !escal(c)), (o, c) => { const h = Math.max(0.05, stairY(c.x + 0.5, c.z + 0.5)); o.scale.set(1, h, 1); o.position.set(c.x + 0.5, h / 2, c.z + 0.5); });
+    // 踏み板の溝（エスカレーター）
+    inst(group, B(0.96, 0.02, 0.04), MT.plain(0xd8c040, 0.5, 0.4), steps.filter(escal), (o, c) => { const h = stairY(c.x + 0.5, c.z + 0.5); o.position.set(c.x + 0.5, h + 0.01, c.z + 0.1); });
+    // 側面：ガラスの手すりと黒い手すりベルト
     const rails = list((t, x) => t === T.RAIL && x < OFF);
-    inst(new THREE.BoxGeometry(1, 1, 1), L(0xffffff), rails, (o, c) => {
-      const near = Math.max(stairY(c.x + 1.5, c.z + 0.5), stairY(c.x - 0.5, c.z + 0.5));
-      const h = near + 1.0;
-      o.scale.set(0.5, h, 1);
-      o.position.set(c.x + 0.5, h / 2, c.z + 0.5);
-      return 0xa9c4d2;
-    });
-    // 2階の吹き抜けまわりのガラスの手すり
-    const glass = L(0xbfe0ee, { transparent: true, opacity: 0.45 });
+    const glass = MT.glass(0xcfe4f0, 0.25);
+    inst(group, B(0.06, 1, 1.02), glass, rails, (o, c) => { const h = Math.max(stairY(c.x + 1.5, c.z + 0.5), stairY(c.x - 0.5, c.z + 0.5)); o.scale.set(1, 1.0, 1); o.position.set(c.x + 0.5, h + 0.5, c.z + 0.5); }, false);
+    inst(group, B(0.4, 1, 1.02), MT.plain(0xd8dcde, 0.35, 0.3), rails, (o, c) => { const h = Math.max(stairY(c.x + 1.5, c.z + 0.5), stairY(c.x - 0.5, c.z + 0.5)); o.scale.set(1, h + 0.05, 1); o.position.set(c.x + 0.5, (h + 0.05) / 2, c.z + 0.5); });
+    inst(group, B(0.1, 0.06, 1.04), MT.plain(0x101010, 0.3), rails, (o, c) => { const h = Math.max(stairY(c.x + 1.5, c.z + 0.5), stairY(c.x - 0.5, c.z + 0.5)); o.position.set(c.x + 0.5, h + 1.02, c.z + 0.5); });
+    // 2階の吹き抜けのガラスの手すり（ステンレスの笠木つき）
     const railEdges = [];
     list((t, x) => t === T.VOID && x >= OFF).forEach((c) => {
       [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dz]) => {
         const n = get(c.x + dx, c.z + dz);
-        if (n === T.FLOOR || n === T.LOW || n === T.EXIT) railEdges.push({ x: c.x, z: c.z, dx, dz });
+        if (n === T.FLOOR || n === T.LOW || n === T.EXIT || n === T.SHUT || n === T.BAR) railEdges.push({ x: c.x, z: c.z, dx, dz });
       });
     });
-    inst(new THREE.BoxGeometry(1, 1.05, 0.06), glass, railEdges, (o, c) => {
-      o.position.set(wxc(c.x) + c.dx * 0.5, FLOOR_H + 0.52, c.z + 0.5 + c.dz * 0.5);
-      if (c.dx) o.rotation.y = Math.PI / 2;
-    });
+    const edgeGeo = (h, t) => B(1, h, t);
+    const edgePlace = (y) => (o, c) => { o.position.set(wxc(c.x) + c.dx * 0.5, FLOOR_H + y, c.z + 0.5 + c.dz * 0.5); if (c.dx) o.rotation.y = Math.PI / 2; };
+    inst(group, edgeGeo(1.0, 0.04), glass, railEdges, edgePlace(0.55), false);
+    inst(group, edgeGeo(0.05, 0.08), MT.surface('brushed', 0xd0d4d8), railEdges, edgePlace(1.06));
+    // 2階の床のへりの化粧板（吹き抜けから見上げたとき）
+    inst(group, edgeGeo(0.4, 0.06), MT.plain(0xf2efe8, 0.5), railEdges, (o, c) => { o.position.set(wxc(c.x) + c.dx * 0.5, FLOOR_H - 0.2, c.z + 0.5 + c.dz * 0.5); if (c.dx) o.rotation.y = Math.PI / 2; });
 
-    // 家具
+    // ===================== 家具・商品 =====================
     const furn = list((t) => t === T.SHELF || t === T.LOW || t === T.LOCKER);
     const byDeco = {};
     furn.forEach((c) => { (byDeco[c.d] = byDeco[c.d] || []).push(c); });
-    const shelfMat = L(0xffffff);
-    const lowMat = L(0xffffff);
-    const SPEC = {
-      [DECO.SHELF]: [0.9, 1.9, 0.9, 0x7a8590, shelfMat],
-      [DECO.BOOK]: [0.9, 2.0, 0.9, 0x6b4a2e, shelfMat],
-      [DECO.TV]: [0.9, 1.7, 0.7, 0x2b2f36, shelfMat],
-      [DECO.MACHINE]: [0.9, 1.8, 0.9, 0x5a3a9a, shelfMat],
-      [DECO.BOOTH]: [0.95, 2.1, 0.95, 0x9a3a4a, shelfMat],
-      [DECO.TABLE]: [0.8, 0.75, 0.8, 0xc9a77a, lowMat],
-      [DECO.COUNTER]: [1, 1.0, 0.9, 0x6e5a48, lowMat],
-      [DECO.SEAT]: [0.95, 0.6, 0.8, 0x8a1f2c, lowMat],
-      [DECO.BED]: [1, 0.55, 1, 0xf0eee8, lowMat],
-      [DECO.SOFA]: [1, 0.65, 0.9, 0x7a5a44, lowMat],
-      [DECO.PIANO]: [1, 1.0, 1, 0x141414, lowMat],
-      [DECO.RACK]: [1, 1.4, 0.4, 0x5c6a7c, lowMat],
-      [DECO.PLANTER]: [1, 0.7, 1, 0x4c7a3e, lowMat],
-      [DECO.SHOWCASE]: [1, 0.95, 0.8, 0xdde7ec, lowMat],
-      [DECO.FOUNTAIN]: [1, 0.55, 1, 0xa9c8d8, lowMat],
-      [DECO.BOARD]: [0.9, 0.3, 0.9, 0x34404c, lowMat],
-      [DECO.NONE]: [0.86, 2.0, 0.92, 0x7b90a6, shelfMat], // ロッカー
-    };
-    Object.keys(byDeco).forEach((k) => {
-      const [w, h, d, color, m] = SPEC[k] || SPEC[DECO.SHELF];
-      inst(new THREE.BoxGeometry(w, h, d), m, byDeco[k], (o, c) => {
-        o.position.set(wxc(c.x), fy(c.x) + h / 2, c.z + 0.5);
-        if (+k === DECO.MACHINE) return [0x5a3a9a, 0x2a6a9a, 0x9a3a5a][(c.x + c.z) % 3];
-        if (+k === DECO.SHELF) return [0x7a8590, 0x8a7a6a, 0x6a7a8a][(c.x * 3 + c.z) % 3];
-        return color;
-      });
-    });
-    // 噴水の水と、ゲーム機の画面
-    const water = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.7, 0.1, 24), new THREE.MeshBasicMaterial({ color: 0x7fc4e8 }));
-    water.position.set(28, 0.58, 21); add(water);
-    inst(new THREE.BoxGeometry(0.7, 0.5, 0.02), new THREE.MeshBasicMaterial({ color: 0xffffff }), byDeco[DECO.MACHINE] || [], (o, c) => {
-      o.position.set(wxc(c.x), fy(c.x) + 1.25, c.z + 0.5 + (c.z === 19 ? 0.46 : -0.46));
-      return [0x7affd2, 0xff7ad8, 0xfff27a][(c.x + c.z) % 3];
-    });
-    // シネマのスクリーン
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(10, 2.6), new THREE.MeshBasicMaterial({ color: 0xdfe8ff }));
-    screen.position.set(48, FLOOR_H + 2.2, 4.03); add(screen);
-
-    // 看板・案内板・非常口
-    const sprite = (text, bg, fg, w, h) => {
-      const c = document.createElement('canvas');
-      c.width = 320; c.height = 80;
-      const x = c.getContext('2d');
-      x.fillStyle = bg; x.fillRect(4, 4, 312, 72);
-      x.fillStyle = fg; x.font = '900 40px "Zen Kaku Gothic New", sans-serif';
-      x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text, 160, 42);
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true }));
-      s.scale.set(w || 2.2, h || 0.55, 1);
-      return s;
-    };
-    STORES.forEach((st) => {
-      const s = sprite(st.name, '#1f2a36', '#f6f1e4');
-      s.position.set(st.sign[0] + 0.5, (st.fl ? FLOOR_H : 0) + (st.fl ? 3.3 : 3.5), st.sign[1]);
-      add(s);
-    });
-    [[0.6, 14.9, '非常口'], [55.4, 27, '非常口'], [41, 0.7, '搬入口'], [28, 39.3, '正面入口']].forEach(([x, z, t]) => {
-      const s = sprite(t, '#1f8a4c', '#ffffff', 1.8, 0.45);
-      s.position.set(x, 2.8, z); add(s);
-    });
-    // フロアガイド（店の名前を階ごとに並べた案内板）
+    const at = (o, c, y) => { o.position.set(wxc(c.x), fy(c.x) + (y || 0), c.z + 0.5); };
+    const shelfMat = MT.plain(0xd8dcdf, 0.45, 0.5);
+    const occl = [shelfMat];
+    const r01 = (n) => { const v = Math.sin(n * 91.7) * 43758.5; return v - Math.floor(v); };
+    // 商品棚（ゴンドラ）：棚板と、並んだ商品（色とりどりの箱）
+    const gond = byDeco[DECO.SHELF] || [];
+    inst(group, merge([[B(0.9, 1.9, 0.12), [0, 0.95, 0]], [B(0.92, 0.04, 0.8), [0, 0.1, 0]], [B(0.92, 0.03, 0.7), [0, 0.6, 0]], [B(0.92, 0.03, 0.6), [0, 1.05, 0]], [B(0.92, 0.03, 0.5), [0, 1.5, 0]]]), shelfMat, gond, (o, c) => { at(o, c); });
+    const goods = [];
+    gond.forEach((c) => { [0.62, 1.07, 1.52, 0.12].forEach((y, r) => { for (let k = 0; k < 4; k++) for (const side of [-1, 1]) goods.push({ c, y: y + 0.02, x: -0.33 + k * 0.22, z: side * (0.16 + r01(c.x + k + r) * 0.08), h: 0.12 + r01(c.x * 3 + k + r * 7 + side) * 0.16, col: r01(c.z * 5 + k + r * 3 + side) }); }); });
+    const PAL = [0xd84a3a, 0x3a7ad8, 0xf0c040, 0x48a868, 0xf2f2ea, 0xe07ab0, 0x8a5ad0, 0xf08a30];
+    inst(group, B(0.18, 1, 0.14), MT.plain(0xffffff, 0.5), goods, (o, g) => { o.position.set(wxc(g.c.x) + g.x, fy(g.c.x) + g.y + g.h / 2, g.c.z + 0.5 + g.z); o.scale.set(1, g.h, 1); return PAL[Math.floor(g.col * PAL.length)]; });
+    // 本棚
+    const bookTex = cv(256, 256, (x, w) => { x.fillStyle = '#5a4630'; x.fillRect(0, 0, w, w); for (let r = 0; r < 4; r++) { let px = 6; while (px < w - 8) { const bw = 6 + Math.random() * 12; x.fillStyle = ['#2e4a7a', '#7a2e2e', '#2e6a4a', '#d8d2c0', '#c0902a', '#444', '#a05a8a'][Math.floor(Math.random() * 7)]; x.fillRect(px, r * 64 + 10 + Math.random() * 10, bw - 1.5, 48); px += bw; } x.fillStyle = '#3a2c1c'; x.fillRect(0, r * 64 + 58, w, 6); } });
+    const bookMat = new THREE.MeshStandardMaterial({ map: bookTex, roughness: 0.7 });
+    occl.push(bookMat);
+    inst(group, B(0.9, 2.0, 0.9), bookMat, byDeco[DECO.BOOK] || [], (o, c) => at(o, c, 1.0));
+    // テレビの売り場：棚に並んだ画面（光る）
+    const tvs = byDeco[DECO.TV] || [];
+    const tvMat = MT.plain(0x22262c, 0.4, 0.5);
+    occl.push(tvMat);
+    inst(group, B(0.9, 1.0, 0.7), tvMat, tvs, (o, c) => at(o, c, 0.5));
+    inst(group, B(0.86, 0.5, 0.06), MT.plain(0x101216, 0.3), tvs, (o, c) => at(o, c, 1.35));
+    const tvScreens = [];
+    tvs.forEach((c) => tvScreens.push({ c, s: -1 }, { c, s: 1 }));
+    inst(group, B(0.8, 0.44, 0.005), MT.glow(0x7ab8ff, 1.6), tvScreens.filter((q) => (q.c.x + q.c.z) % 3), (o, q) => { at(o, q.c, 1.35); o.position.z += q.s * 0.035; return [0x7ab8ff, 0xffb070, 0x90ffb0][q.c.x % 3]; }, false);
+    // ゲームセンターの筐体：光る画面と看板
+    const mach = byDeco[DECO.MACHINE] || [];
+    const machMat = MT.plain(0x2a2440, 0.35, 0.3);
+    occl.push(machMat);
+    inst(group, merge([[B(0.85, 1.4, 0.75), [0, 0.7, 0]], [B(0.85, 0.35, 0.6), [0, 1.6, -0.08]]]), machMat, mach, (o, c) => { at(o, c); return [0x5a3a9a, 0x2a6a9a, 0x9a3a5a][(c.x + c.z) % 3]; });
+    inst(group, B(0.62, 0.48, 0.02), MT.glow(0xffffff, 2.2), mach, (o, c) => { at(o, c, 1.15); o.position.z += c.z === 19 ? 0.38 : -0.38; o.rotation.x = c.z === 19 ? -0.25 : 0.25; return [0x7affd2, 0xff7ad8, 0xfff27a][(c.x + c.z) % 3]; }, false);
+    inst(group, B(0.8, 0.22, 0.02), MT.glow(0xffffff, 3), mach, (o, c) => { at(o, c, 1.65); o.position.z += c.z === 19 ? 0.23 : -0.39; return [0xff5ab0, 0x5ad8ff, 0xffd040][(c.x + c.z + 1) % 3]; }, false);
+    // 試着室
+    inst(group, B(0.95, 2.1, 0.95), MT.surface('fabric', 0x9a3a4a), byDeco[DECO.BOOTH] || [], (o, c) => at(o, c, 1.05));
+    // カフェ・レストラン・フードコートのテーブルと椅子
+    const tables = byDeco[DECO.TABLE] || [];
+    inst(group, merge([[CY(0.38, 0.38, 0.04, 20), [0, 0.74, 0]], [CY(0.03, 0.03, 0.72, 8), [0, 0.37, 0]], [CY(0.22, 0.22, 0.03, 16), [0, 0.015, 0]]]), MT.surface('deskwood', 0xd8b080), tables, (o, c) => at(o, c));
+    const tchairs = [];
+    tables.forEach((c) => { tchairs.push({ c, a: 0.3 + r01(c.x) }, { c, a: Math.PI + 0.3 + r01(c.z) }); });
+    inst(group, merge([[B(0.38, 0.04, 0.38), [0, 0.45, 0]], [B(0.38, 0.4, 0.04), [0, 0.68, -0.18]], ...[[-0.16, -0.16], [0.16, -0.16], [-0.16, 0.16], [0.16, 0.16]].map(([a, b]) => [CY(0.015, 0.015, 0.45, 6), [a, 0.225, b]])]), MT.plain(0x3a3e44, 0.4, 0.6), tchairs, (o, q) => { at(o, q.c); o.position.x += Math.sin(q.a) * 0.5; o.position.z += Math.cos(q.a) * 0.5; o.rotation.y = q.a + Math.PI; });
+    // カウンター（レジ・ショーケース）
+    const counters = byDeco[DECO.COUNTER] || [];
+    inst(group, B(1, 0.95, 0.9), MT.surface('deskwood', 0x6e5a48), counters, (o, c) => at(o, c, 0.475));
+    inst(group, B(1.02, 0.04, 0.92), MT.plain(0xe8e4dc, 0.2), counters, (o, c) => at(o, c, 0.97));
+    inst(group, B(0.3, 0.22, 0.25), MT.plain(0x1a1c20, 0.3), counters.filter((c) => c.x % 3 === 0), (o, c) => at(o, c, 1.1));
+    // ショーケース（ガラスと、中の光）
+    const cases = byDeco[DECO.SHOWCASE] || [];
+    inst(group, B(1, 0.6, 0.8), MT.plain(0xe8ecee, 0.3, 0.2), cases, (o, c) => at(o, c, 0.3));
+    inst(group, B(0.96, 0.32, 0.76), MT.glass(0xeaf6ff, 0.3), cases, (o, c) => at(o, c, 0.77), false);
+    inst(group, B(0.9, 0.02, 0.7), MT.glow(0xfff4e0, 1.6), cases, (o, c) => at(o, c, 0.62), false);
+    // 映画館の座席・家具店のベッドとソファ・楽器店のピアノ
+    inst(group, merge([[B(0.95, 0.12, 0.6), [0, 0.42, 0.05]], [B(0.95, 0.65, 0.12), [0, 0.6, -0.3]], [B(0.06, 0.6, 0.6), [-0.47, 0.3, 0]]]), MT.surface('fabric', 0x8a1f2c), byDeco[DECO.SEAT] || [], (o, c) => { at(o, c); o.rotation.y = Math.PI; });
+    inst(group, B(1, 0.4, 1), MT.plain(0x6a5040, 0.5), byDeco[DECO.BED] || [], (o, c) => at(o, c, 0.2));
+    inst(group, B(0.98, 0.18, 0.98), MT.surface('fabric', 0xf4f0e8), byDeco[DECO.BED] || [], (o, c) => at(o, c, 0.48));
+    inst(group, merge([[B(1, 0.4, 0.9), [0, 0.2, 0]], [B(1, 0.45, 0.2), [0, 0.6, -0.35]]]), MT.surface('fabric', 0x7a5a44), byDeco[DECO.SOFA] || [], (o, c) => at(o, c));
+    inst(group, merge([[B(1, 1.1, 0.55), [0, 0.55, -0.2]], [B(1, 0.06, 0.3), [0, 0.75, 0.15]]]), MT.plain(0x0c0c0e, 0.1, 0.1), byDeco[DECO.PIANO] || [], (o, c) => at(o, c));
+    // 服のラック：銀のバーに、色とりどりの服
+    const racks = byDeco[DECO.RACK] || [];
+    inst(group, merge([[CY(0.015, 0.015, 1, 6), [0, 1.3, 0], [0, 0, Math.PI / 2]], [CY(0.015, 0.015, 1.3, 6), [-0.48, 0.65, 0]], [CY(0.015, 0.015, 1.3, 6), [0.48, 0.65, 0]]]), MT.surface('brushed'), racks, (o, c) => at(o, c));
+    const clothes = [];
+    racks.forEach((c) => { for (let k = 0; k < 7; k++) clothes.push({ c, k }); });
+    inst(group, B(0.05, 0.75, 0.42), MT.surface('fabric', 0xffffff), clothes, (o, q) => { at(o, q.c, 0.9); o.position.x += -0.4 + q.k * 0.13; o.rotation.y = (r01(q.k + q.c.x) - 0.5) * 0.3; return [0xd8c8b0, 0x2a3a5a, 0xb85a4a, 0xe8e4dc, 0x5a7a5a, 0xc8a0b8, 0x3a3a3a][(q.k + q.c.x) % 7]; });
+    // 植え込み：鉢と葉のかたまり
+    const plants = byDeco[DECO.PLANTER] || [];
+    inst(group, B(1, 0.6, 1), MT.surface('concrete', 0x8a8478), plants, (o, c) => at(o, c, 0.3));
+    const leafGeo = new THREE.IcosahedronGeometry(0.42, 1);
+    inst(group, leafGeo, MT.surface('grass', 0x8ab070), plants, (o, c) => { at(o, c, 0.95); o.scale.set(1, 0.85, 1); o.rotation.y = c.x; });
+    // 噴水：石の縁と、光る水面
+    const fount = byDeco[DECO.FOUNTAIN] || [];
+    if (fount.length) {
+      const rim = add(new THREE.Mesh(new THREE.TorusGeometry(1.75, 0.18, 12, 40), MT.surface('terrazzo', 0xc8c0b4)));
+      rim.rotation.x = Math.PI / 2; rim.position.set(28, 0.45, 21); rim.castShadow = true;
+      const basin = add(new THREE.Mesh(CY(1.8, 1.9, 0.45, 40), MT.surface('terrazzo', 0xb8b0a4)));
+      basin.position.set(28, 0.22, 21);
+      const water = add(new THREE.Mesh(CY(1.62, 1.62, 0.04, 40), new THREE.MeshStandardMaterial({ color: 0x2a6a8a, roughness: 0.02, metalness: 0.2, envMapIntensity: 2, emissive: 0x0a3a5a })));
+      water.position.set(28, 0.5, 21);
+      const spout = add(new THREE.Mesh(CY(0.12, 0.2, 1.1, 16), MT.surface('terrazzo', 0xd8d0c4)));
+      spout.position.set(28, 0.9, 21);
+    }
+    // フロアガイド（光る案内板）
     const guide = document.createElement('canvas');
-    guide.width = 512; guide.height = 512;
+    guide.width = 512; guide.height = 640;
     const g = guide.getContext('2d');
-    g.fillStyle = '#1d2733'; g.fillRect(0, 0, 512, 512);
-    g.fillStyle = '#ffd34d'; g.font = '900 40px "Zen Kaku Gothic New", sans-serif'; g.fillText('FLOOR GUIDE', 24, 56);
-    [[1, 'books,toys,acc,cinema,interior,arcade,music,glasses,rest,food'], [0, 'sport,cafe,goods,super,apparel,electro,drug,shoes,flower,bakery']].forEach(([fl], i) => {
-      const names = STORES.filter((s) => s.fl === fl).map((s) => s.name);
-      g.fillStyle = '#7fe3ff'; g.font = '900 34px "Zen Kaku Gothic New", sans-serif'; g.fillText(fl ? '2F' : '1F', 24, 118 + i * 200);
-      g.fillStyle = '#f2efe6'; g.font = '700 25px "Zen Kaku Gothic New", sans-serif';
-      names.forEach((n, j) => g.fillText(n, 90 + (j % 2) * 210, 118 + i * 200 + Math.floor(j / 2) * 34));
+    g.fillStyle = '#1d2733'; g.fillRect(0, 0, 512, 640);
+    g.fillStyle = '#ffd34d'; g.font = '900 40px ' + FONT; g.fillText('FLOOR GUIDE', 24, 60);
+    [1, 0].forEach((f, i) => {
+      const names = STORES.filter((s) => s.fl === f).map((s) => s.name);
+      g.fillStyle = '#7fe3ff'; g.font = '900 36px ' + FONT; g.fillText(f ? '2F' : '1F', 24, 130 + i * 250);
+      g.fillStyle = '#f2efe6'; g.font = '700 26px ' + FONT;
+      names.forEach((n, j) => g.fillText(n, 90 + (j % 2) * 210, 130 + i * 250 + Math.floor(j / 2) * 38));
     });
-    const guideTex = new THREE.CanvasTexture(guide);
-    list((t) => t === T.LOW).filter((c) => c.d === DECO.BOARD).forEach((c) => {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5), new THREE.MeshBasicMaterial({ map: guideTex, side: THREE.DoubleSide }));
-      m.position.set(wxc(c.x), fy(c.x) + 1.4, c.z + 0.5);
-      add(m);
+    const guideTex = new THREE.CanvasTexture(guide); guideTex.colorSpace = THREE.SRGBColorSpace;
+    const boards = byDeco[DECO.BOARD] || [];
+    inst(group, B(0.9, 1.9, 0.18), MT.plain(0x2a2e34, 0.35, 0.6), boards, (o, c) => at(o, c, 0.95));
+    const guideMat = new THREE.MeshBasicMaterial({ map: guideTex, color: new THREE.Color(1.3, 1.3, 1.3), toneMapped: false });
+    boards.forEach((c) => [1, -1].forEach((s) => { const m = add(new THREE.Mesh(new THREE.PlaneGeometry(0.8, 1.0), guideMat)); m.position.set(wxc(c.x), fy(c.x) + 1.35, c.z + 0.5 + s * 0.095); if (s < 0) m.rotation.y = Math.PI; }));
+    // ロッカー（靴屋の倉庫）
+    const lockerMat = MT.surface('locker', 0x9ab0c0).clone();
+    MT.worldUV(lockerMat, 0.5);
+    occl.push(lockerMat);
+    inst(group, B(0.86, 2.0, 0.92), lockerMat, byDeco[DECO.NONE] || [], (o, c) => at(o, c, 1.0));
+    // シネマのスクリーン
+    const screen = add(new THREE.Mesh(new THREE.PlaneGeometry(10, 2.6), MT.glow(0xbfd0ff, 1.4)));
+    screen.position.set(48, FLOOR_H + 2.2, 4.03);
+
+    // ===================== 看板・表示 =====================
+    // 店の看板：内側から光る箱（文字が光ってにじむ）
+    const SIGNC = { カフェ: '#6a3a1a', ベーカリー: '#8a4a1a', スーパー: '#1a6a3a', ドラッグストア: '#1a4a8a', シネマ: '#4a1a5a', ゲームセンター: '#2a1a6a', フードコート: '#8a3a1a', アパレル: '#1a1a1a', 書店: '#2a4a2a' };
+    STORES.forEach((st) => {
+      const tx = cv(512, 128, (x, w, h) => {
+        x.fillStyle = SIGNC[st.name] || '#1f2a36'; x.fillRect(0, 0, w, h);
+        x.fillStyle = 'rgba(255,255,255,.08)'; x.fillRect(0, 0, w, h * 0.45);
+        x.fillStyle = '#fff6e8'; x.font = '900 ' + (st.name.length > 5 ? 56 : 70) + 'px ' + FONT; x.textAlign = 'center'; x.textBaseline = 'middle';
+        x.fillText(st.name, w / 2, h / 2 + 4);
+      });
+      const m = add(new THREE.Mesh(B(2.6, 0.62, 0.12), [MT.plain(0x2a2e34, 0.4, 0.6), MT.plain(0x2a2e34, 0.4, 0.6), MT.plain(0x2a2e34, 0.4, 0.6), MT.plain(0x2a2e34, 0.4, 0.6), new THREE.MeshBasicMaterial({ map: tx, color: new THREE.Color(1.5, 1.5, 1.5), toneMapped: false }), new THREE.MeshBasicMaterial({ map: tx, color: new THREE.Color(1.5, 1.5, 1.5), toneMapped: false })]));
+      const [sx, sz] = st.sign;
+      const y = (st.fl ? FLOOR_H : 0) + (st.fl ? 3.45 : 3.65);
+      const vert = Math.abs(sx - 14.6) < 0.3 || Math.abs(sx - 40.4) < 0.3;
+      m.position.set(sx + 0.5, y, sz);
+      if (vert) m.rotation.y = Math.PI / 2;
     });
+    // 出入口の非常口の表示
+    const exitTex = cv(256, 128, (x, w, h) => { x.fillStyle = '#0f9d58'; x.fillRect(0, 0, w, h); x.fillStyle = '#fff'; x.font = '900 46px ' + FONT; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('非常口', w / 2, h / 2); });
+    const exitMat = new THREE.MeshBasicMaterial({ map: exitTex, color: new THREE.Color(1.8, 1.8, 1.8), toneMapped: false, side: THREE.DoubleSide });
+    [[0.6, 14.9, Math.PI / 2], [55.4, 27, -Math.PI / 2], [41, 0.7, 0], [28, 38.6, Math.PI]].forEach(([x, z, r]) => { const m = add(new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.45), exitMat)); m.position.set(x, 2.9, z); m.rotation.y = r; });
+    // 吹き抜けに下がるセールの垂れ幕
+    const banner = cv(128, 512, (x, w, h) => { x.fillStyle = '#c8202c'; x.fillRect(0, 0, w, h); x.fillStyle = '#fff'; x.font = '900 70px ' + FONT; x.textAlign = 'center'; ['秋', 'の', '大', '感', '謝', '祭'].forEach((t, i) => x.fillText(t, w / 2, 70 + i * 76)); });
+    const bannerMat = new THREE.MeshStandardMaterial({ map: banner, side: THREE.DoubleSide, roughness: 0.8 });
+    [[23.5, 18], [32.5, 23.5]].forEach(([x, z]) => { const m = add(new THREE.Mesh(new THREE.PlaneGeometry(1.1, 4.2), bannerMat)); m.position.set(x, FLOOR_H + 1.9, z); });
 
-    // 外：パトカー
-    const policeLights = [];
-    const car = (x, z, rot) => {
-      const cg = new THREE.Group();
-      const part = (w, h, d, c, y, zz) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), L(c)); m.position.set(0, y, zz); cg.add(m); };
-      part(1.8, 0.6, 4, 0xf4f4f4, 0.5, 0); part(1.82, 0.3, 4.02, 0x111111, 0.35, 0); part(1.6, 0.5, 2, 0x111111, 1.05, -0.2);
-      const r = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.18, 0.3), new THREE.MeshBasicMaterial({ color: 0xff2020 }));
-      r.position.set(-0.3, 1.4, -0.2);
-      const b = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.18, 0.3), new THREE.MeshBasicMaterial({ color: 0x2040ff }));
-      b.position.set(0.3, 1.4, -0.2);
-      cg.add(r, b); policeLights.push(r, b);
-      cg.position.set(x, 0, z); cg.rotation.y = rot; add(cg);
-    };
-    car(22, FH + 5, Math.PI / 2.3); car(34, FH + 5.5, -Math.PI / 2.2); car(-5, 15, 0.1); car(FW + 5, 27, -0.1);
-
-    return { policeLights, occluders: [shelfMat], onExit: () => {} };
+    TG.gfx.setLightSources(sources);
+    function update(t) {
+      beaconMat.color.setScalar(0.5 + 4.5 * Math.max(0, Math.sin(t * 4)));
+      beaconMat.color.g = 0.1 * beaconMat.color.r; beaconMat.color.b = 0.05 * beaconMat.color.r;
+    }
+    return { policeLights: lights, occluders: occl, onExit: () => {}, update, lightSources: sources };
   }
 
   // ======================= 封鎖（シャッター・バリケード） =======================
@@ -508,9 +614,9 @@ TG.STAGES = TG.STAGES || {};
     const barTex = tex((g) => { g.fillStyle = '#ffcc1a'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#1b1b1b'; for (let x = -64; x < 64; x += 24) { g.beginPath(); g.moveTo(x, 64); g.lineTo(x + 12, 64); g.lineTo(x + 76, 0); g.lineTo(x + 64, 0); g.closePath(); g.fill(); } });
     barTex.repeat.set(1, 1);
     CMAT = {
-      shut: new THREE.MeshLambertMaterial({ map: shutTex }),
-      bar: new THREE.MeshLambertMaterial({ map: barTex }),
-      post: new THREE.MeshLambertMaterial({ color: 0x3a3a3a }),
+      shut: new THREE.MeshStandardMaterial({ map: shutTex, roughness: 0.45, metalness: 0.7 }),
+      bar: new THREE.MeshStandardMaterial({ map: barTex, roughness: 0.5 }),
+      post: new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.5, metalness: 0.6 }),
     };
     return CMAT;
   }
@@ -655,6 +761,17 @@ TG.STAGES = TG.STAGES || {};
       }
     },
     sky: 0x9fb4c4,
+    // 見た目：日曜の夕方。館内の照明は生きているが、非常灯の赤がところどころに灯る
+    look: {
+      sky: [0x101a33, 0x50607a, 0x161414], sunGlow: 0x000000, sunDir: [0.22, 1, 0.16],
+      fog: [0x1c2028, 0.018],
+      hemi: [0xe6ecff, 0x4a4036, 0.85],
+      rim: 0x405a80,
+      sun: [0xf2f0ff, 2.0],
+      env: { base: 0x2a2e36, floor: 0x3a342c, panels: [[0, 9.8, 0, 6, 0.2, 26, 0xffffff, 3], [-8, 9.8, 0, 2, 0.2, 26, 0xfff2dc, 2.2], [8, 9.8, 0, 2, 0.2, 26, 0xfff2dc, 2.2], [14.8, 2, 0, 0.2, 2, 6, 0xff2a20, 1.2]] },
+      exposure: 0.95, bloom: 0.65, bloomThr: 1.1, vignette: 0.5, sat: 1.0,
+      lift: [0.01, 0.015, 0.035], gain: [1.0, 1.0, 1.03], tint: [1, 1, 1],
+    },
     par: 540,
     titleCam: { x: 28, z: 20, r: 44, h: 30 },
     camTop: (x) => (x >= OFF - 2 ? 3.5 : 3.9),
