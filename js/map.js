@@ -196,8 +196,7 @@ TG.STAGES = TG.STAGES || {};
   const JANITOR = { x0: 40, z0: 17, x1: 50, z1: 27 };
   // クラスメートの立ち絵の割り当て（佐藤くん／男子／女子）
   const BOY_SATO = { cast: 'sato', faces: ['worried', 'serious', 'relief'] };
-  const BOY = { cast: 'classmate_boy', faces: ['worried', 'serious', 'relief'] };
-  const GIRL_C = { cast: 'classmate_girl', faces: ['worried', 'surprised', 'relief'] };
+  const GIRL_C = { i: 101, name: '高橋さん', cast: 'classmate_girl', faces: ['worried', 'surprised', 'relief'] };
   // 職員室に隠れている先生（スーツ姿の3Dモデル）
   const teacherModel = () => TG.models.human({ kind: 'adultM', top: 0x3a4250, inner: 0xf4f4f0, pants: 0x2e3440, shoes: 0x1c1a18, hair: 0x15120f, hairStyle: 'short', skin: 0xe2b48f, brow: 'worried', mouth: 'frown', scale: 1.05 });
   const RIDDLE = 'この女は別の場所に閉じ込めておけ。', RIDDLE_HINT = '誰か見ていないか？';
@@ -271,18 +270,19 @@ TG.STAGES = TG.STAGES || {};
     // 隠れているクラスメート。毎回このうち count 人がいる（白石さんと同じ部屋の子はいない）。
     // 近づいて「話す」と、白石さんの居場所について知っていることを1つ教えてくれる
     informants: {
-      count: 4,
+      // 先生・佐藤くん・高橋さん（隠れ場所は毎回ちがう）の3人。3人の話を合わせると居場所がしぼれる
+      pick: (pool, shuffle) => ['teacher', 'sato', 'classmate_girl'].map((k) => shuffle(pool.filter((c) => c.cast === k))[0]).filter(Boolean),
       spots: [
         // cast / faces：吹き出しの立ち絵（話しかけ中・ヒント・鍵の話の表情）
         { i: 100, name: '佐藤くん', ...C(13, 10), face: Math.PI, room: '1a', always: true, ...BOY_SATO },
         { name: '先生', ...C(8, 24), face: Math.PI, room: 'staff', always: true, cast: 'teacher', faces: ['panic', 'serious', 'relief'], model: teacherModel },
-        { i: 102, name: '中村くん', ...C(24, 21), face: E, room: 'entr', ...BOY },
-        { i: 103, name: '小林さん', ...C(46, 25), face: N, room: 'janitor', ...GIRL_C },
-        { i: 104, name: '山本くん', ...C(50, 32), face: N, room: 'yard', ...BOY },
-        { i: 105, name: '伊藤さん', ...C(31, 1), face: S, room: 'backyard', ...GIRL_C },
-        { i: 106, name: '渡辺くん', ...C(57, 11), face: Wd, room: '3a', ...BOY },
-        { i: 107, name: '加藤さん', ...C(46, 11), face: N, room: 'music', ...GIRL_C },
-        { i: 109, name: '山田さん', ...C(19, 23), face: Wd, room: 'infirm', ...GIRL_C },
+        { ...C(24, 21), face: E, room: 'entr', ...GIRL_C },
+        { ...C(46, 25), face: N, room: 'janitor', ...GIRL_C },
+        { ...C(50, 32), face: N, room: 'yard', ...GIRL_C },
+        { ...C(31, 1), face: S, room: 'backyard', ...GIRL_C },
+        { ...C(57, 11), face: Wd, room: '3a', ...GIRL_C },
+        { ...C(46, 11), face: N, room: 'music', ...GIRL_C },
+        { ...C(19, 23), face: Wd, room: 'infirm', ...GIRL_C },
       ],
       hints: (spot) => spot.talk,
       // 白石さんを助けたあとに話しかけると、裏門の鍵のありかを教えてくれる
@@ -294,7 +294,7 @@ TG.STAGES = TG.STAGES || {};
     },
     // 白石さんの立ち絵（表情ごと）。助けたときの会話と、物語の場面で出る
     // 会話に出る人物（立ち絵を先に読み込む）。白石さんは救出対象
-    cast: ['shiraishi', 'teacher', 'sato', 'classmate_girl', 'classmate_boy', 'terrorist', 'leader', 'police'],
+    cast: ['shiraishi', 'teacher', 'sato', 'classmate_girl', 'terrorist', 'leader', 'police'],
     heroine: 'shiraishi',
     // 白石さんと鍵の場所は、話を聞いて自分で探す（ルート・目印は出さない）
     noGuide: true,

@@ -14,8 +14,7 @@ window.TG = window.TG || {};
     shiraishi: { name: '白石さん', color: '#ff8fb6', faces: faces('shiraishi', ['normal', 'scared', 'surprised', 'relief', 'smile', 'tears', 'close']) },
     teacher: { name: '先生', color: '#9fb8ff', faces: faces('teacher', ['serious', 'panic', 'relief']) },
     sato: { name: '佐藤くん', color: '#8fe0b0', faces: faces('sato', ['worried', 'serious', 'relief']) },
-    classmate_girl: { name: 'クラスメート', color: '#ffd27a', faces: faces('classmate_girl', ['worried', 'surprised', 'relief']) },
-    classmate_boy: { name: 'クラスメート', color: '#7fd0e8', faces: faces('classmate_boy', ['worried', 'serious', 'relief']) },
+    classmate_girl: { name: '高橋さん', color: '#ffd27a', faces: faces('classmate_girl', ['worried', 'surprised', 'relief']) },
     // ---- ショッピングモール ----
     misaki: { name: '美咲', color: '#ffb48a', faces: faces('misaki', ['smile', 'surprised', 'scared', 'relief', 'joy']) },
     mall_woman: { name: '買い物客の女性', color: '#d9a8ff', faces: faces('mall_woman', ['worried', 'serious']) },
