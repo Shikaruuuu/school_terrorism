@@ -164,9 +164,12 @@ body.in-locker #lockerView { display: block; }
 /* ---------- 会話シーン ---------- */
 #cine { position: fixed; inset: 0; display: grid; grid-template-rows: 1fr auto; cursor: pointer; }
 .cine-box { position: relative; z-index: 1; margin: 0 auto calc(var(--safe-b) + 12px); width: min(760px, calc(100% - 32px)); background: rgba(4,7,6,.86); border: 1px solid var(--line); border-radius: 4px; padding: 14px 18px 12px; }
+#cine.has-face .cine-box { padding: 7px 14px 5px; margin-top: 6px; }
+#cine.has-face #cineText { min-height: 0; line-height: 1.55; }
+#cine.has-face .cine-foot { margin-top: 0; }
 #cine.has-face { background: radial-gradient(ellipse at 50% 40%, rgba(40,20,24,.55), rgba(4,7,6,.82)); }
 .cine-stage { min-height: 0; height: 100%; display: flex; align-items: flex-end; justify-content: center; padding-top: max(10px, env(safe-area-inset-top, 0px)); }
-#cineFace { height: calc(100% + 70px); margin-bottom: -70px; max-height: 520px; width: auto; aspect-ratio: 142 / 184; object-fit: cover; border-radius: 14px 14px 0 0; box-shadow: 0 0 40px rgba(255,143,182,.25); -webkit-mask-image: linear-gradient(to bottom, #000 78%, transparent); mask-image: linear-gradient(to bottom, #000 78%, transparent); transition: filter .25s; animation: faceIn .35s ease-out; }
+#cineFace { height: 100%; max-height: 520px; width: auto; aspect-ratio: 142 / 184; object-fit: cover; border-radius: 14px 14px 0 0; box-shadow: 0 0 40px rgba(255,143,182,.25); transition: filter .25s; animation: faceIn .35s ease-out; }
 #cineFace.dim { filter: brightness(.55) saturate(.8); }
 @keyframes faceIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 #cineWho { display: inline-block; font-size: 13px; color: var(--pink); margin-bottom: 4px; font-weight: 700; }
