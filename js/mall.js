@@ -11,10 +11,10 @@ TG.STAGES = TG.STAGES || {};
   const W = OFF + FW, H = FH;
   const FLOOR_H = 4.5;
 
-  const T = { FLOOR: 1, WALL: 2, SHELF: 3, LOW: 4, VOID: 5, STAIR: 6, PORTAL: 7, EXIT: 8, GAP: 9, RAIL: 10, LOCKER: 11 };
-  const SOLID = new Set([T.WALL, T.SHELF, T.LOW, T.VOID, T.GAP, T.RAIL, T.LOCKER]);
-  const SIGHT = new Set([T.WALL, T.SHELF, T.GAP, T.LOCKER]);
-  const LOW = new Set([T.LOW, T.RAIL]);
+  const T = { FLOOR: 1, WALL: 2, SHELF: 3, LOW: 4, VOID: 5, STAIR: 6, PORTAL: 7, EXIT: 8, GAP: 9, RAIL: 10, LOCKER: 11, SHUT: 12, BAR: 13 };
+  const SOLID = new Set([T.WALL, T.SHELF, T.LOW, T.VOID, T.GAP, T.RAIL, T.LOCKER, T.SHUT, T.BAR]);
+  const SIGHT = new Set([T.WALL, T.SHELF, T.GAP, T.LOCKER, T.SHUT]);
+  const LOW = new Set([T.LOW, T.RAIL, T.BAR]);
 
   const grid = new Uint8Array(W * H).fill(T.GAP);
   const deco = new Uint8Array(W * H); // 家具の見た目（DECO の番号）
@@ -200,7 +200,7 @@ TG.STAGES = TG.STAGES || {};
     wx: (x) => (x >= OFF - 2 ? x - OFF : x),
     wy: (x, z) => (x >= OFF - 2 ? FLOOR_H : stairY(x, z)),
     camWall: (x, z) => { const t = get(x, z); return t === T.WALL || t === T.GAP; },
-    radarColor: (t) => (t === T.WALL ? '#8fe0b0' : t === T.SHELF || t === T.LOCKER ? '#5fae82' : t === T.LOW || t === T.RAIL ? '#2f6a4b' : t === T.VOID ? '#04100a' : t === T.STAIR ? '#3d7a5c' : t === T.EXIT ? '#ffd34d' : t === T.GAP ? '#06130d' : null),
+    radarColor: (t) => (t === T.SHUT ? '#ff5a3c' : t === T.BAR ? '#ffb02e' : t === T.WALL ? '#8fe0b0' : t === T.SHELF || t === T.LOCKER ? '#5fae82' : t === T.LOW || t === T.RAIL ? '#2f6a4b' : t === T.VOID ? '#04100a' : t === T.STAIR ? '#3d7a5c' : t === T.EXIT ? '#ffd34d' : t === T.GAP ? '#06130d' : null),
   };
 
   // ======================= 3D =======================
@@ -414,6 +414,151 @@ TG.STAGES = TG.STAGES || {};
     return { policeLights, occluders: [shelfMat], onExit: () => {} };
   }
 
+  // ======================= 封鎖（シャッター・バリケード） =======================
+  // 毎回ちがう場所が閉まる。閉まったマスは SHUT（店・出口・非常階段のシャッター：通れず、向こうも見えない）か
+  // BAR（通路のバリケード・止まったエスカレーター：通れないが、しゃがまなければ向こうから見える）になる。
+  // 選んだ組み合わせで「スタート→彼女→出口」がつながっているか、敵の見回りが詰まないか、
+  // 無駄な大回りになっていないかを確かめてから使う。彼女を助けると、さらに一番近い出口と通路が1つ閉まる。
+  const BASE = grid.slice();
+  const cellsX = (x0, x1, z, fl) => { const o = []; for (let x = x0; x <= x1; x++) o.push([x + (fl || 0) * OFF, z]); return o; };
+  const cellsZ = (x, z0, z1, fl) => { const o = []; for (let z = z0; z <= z1; z++) o.push([x + (fl || 0) * OFF, z]); return o; };
+  const axisOf = (cells) => (cells[0][1] === cells[1][1] ? 'x' : 'z');
+  const both = (fn) => fn(0).concat(fn(1));
+  const CL = {
+    exits: [cellsZ(0, 14, 15), cellsZ(55, 26, 27), cellsX(40, 41, 0), cellsX(26, 29, 39)]
+      .map((cells, i) => ({ kind: 'shut', exit: i, sign: '閉鎖', cells })),
+    // 上下の階のつなぎ：エスカレーター2基（止まる）、非常階段2つ（シャッター）
+    links: [
+      { kind: 'bar', sign: '停止中', cells: cellsX(22, 23, 24, 0).concat(cellsX(22, 23, 17, 1)) },
+      { kind: 'bar', sign: '停止中', cells: cellsX(32, 33, 17, 0).concat(cellsX(32, 33, 24, 1)) },
+      { kind: 'shut', sign: '閉鎖', cells: cellsZ(10, 1, 2, 0).concat(cellsZ(3, 1, 2, 1)) },
+      { kind: 'shut', sign: '閉鎖', cells: cellsZ(45, 1, 2, 0).concat(cellsZ(52, 1, 2, 1)) },
+    ],
+    // 通路のバリケード：北と南の通路、バックヤード、2階の吹き抜けの両脇の渡り廊下
+    cuts: both((fl) => [cellsZ(10, 13, 16, fl), cellsZ(29, 13, 16, fl), cellsZ(45, 13, 16, fl), cellsZ(17, 25, 28, fl), cellsZ(38, 25, 28, fl), cellsZ(30, 1, 2, fl)])
+      .concat([cellsX(15, 19, 20, 1), cellsX(36, 40, 20, 1)])
+      .map((cells) => ({ kind: 'bar', sign: '立入禁止', cells })),
+    // 店のシャッター：北の店は表と裏（バックヤード）の2か所に入口があるので、抜け道になる
+    shops: both((fl) => [
+      cellsX(6, 8, 12, fl), cellsX(19, 21, 12, fl), cellsX(33, 35, 12, fl), cellsX(47, 49, 12, fl),
+      cellsX(11, 12, 3, fl), cellsX(20, 21, 3, fl), cellsX(34, 35, 3, fl), cellsX(42, 43, 3, fl),
+      cellsZ(14, 20, 21, fl), cellsZ(41, 20, 21, fl), cellsX(6, 8, 29, fl), cellsX(34, 36, 29, fl), cellsX(47, 49, 29, fl),
+    ]).concat([cellsX(19, 21, 29, 1)]).map((cells) => ({ kind: 'shut', cells })),
+  };
+  const closeCells = (c) => { for (const [x, z] of c.cells) grid[idx(x, z)] = c.kind === 'shut' ? T.SHUT : T.BAR; };
+  const pickN = (list, n, not) => {
+    const pool = list.filter((c) => !(not && not.includes(c)));
+    const out = [];
+    while (out.length < n && pool.length) out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    return out;
+  };
+  const START = { x: 23.5, z: 36.5 };
+
+  function makePlan(ctx, stage, spot, diff) {
+    const len = (a, b) => { const q = ctx.findPath(a.x, a.z, b.x, b.z); return q ? q.length : 1e9; };
+    const exits = stage.exits;
+    const routes = stage.lists[diff].map((id) => (id === 'hold' ? spot.guard : stage.enemies[id].route));
+    const routesOk = (seen) => routes.every((r) => r.every((w) => ctx.reached(seen, w[0] + 0.5, w[1] + 0.5)));
+    const shutAt = (i) => grid[i] === T.SHUT || grid[i] === T.BAR;
+    grid.set(BASE);
+    const base1 = len(START, spot.pos);
+    const baseEsc = exits.map((ex) => len(spot.pos, ex));
+    for (let tries = 0; tries < 80; tries++) {
+      grid.set(BASE);
+      const A = [].concat(pickN(CL.exits, 1), pickN(CL.links, 1), pickN(CL.cuts, 3), pickN(CL.shops, 3));
+      A.forEach(closeCells);
+      const seen = ctx.reachFrom(START.x, START.z);
+      const open = exits.map((ex, i) => i).filter((i) => !A.some((c) => c.exit === i));
+      if (![spot.pos, spot.charm, stage.leave.pos].every((p) => ctx.reached(seen, p.x, p.z))) continue;
+      if (!open.every((i) => ctx.reached(seen, exits[i].x, exits[i].z)) || !routesOk(seen)) continue;
+      if (len(START, spot.pos) > base1 * 1.6 + 8) continue;
+      // 助けたあと：彼女の居場所から一番近い出口と、通路が1つ閉まる
+      const near = open.map((i) => [i, len(spot.pos, exits[i])]).sort((a, b) => a[1] - b[1])[0][0];
+      const B = [CL.exits[near]].concat(pickN(CL.cuts, 1, A));
+      B.forEach(closeCells);
+      const seenB = ctx.reachFrom(spot.pos.x, spot.pos.z);
+      const rest = open.filter((i) => i !== near);
+      let nA = 0, nB = 0;
+      for (let i = 0; i < seen.length; i++) { if (seen[i] && !shutAt(i)) nA++; if (seenB[i]) nB++; }
+      const esc = Math.min(...rest.map((i) => len(spot.pos, exits[i])));
+      // 閉まったせいで誰かが閉じ込められる形（行き止まりの区画）は使わない
+      const okB = nB >= nA && rest.every((i) => ctx.reached(seenB, exits[i].x, exits[i].z)) && routesOk(seenB) && esc <= Math.min(...rest.map((i) => baseEsc[i])) * 1.6 + 10;
+      grid.set(BASE);
+      A.forEach(closeCells);
+      if (okB) return { A, B };
+    }
+    grid.set(BASE);
+    return { A: [], B: [] };
+  }
+
+  // 見た目：シャッターは灰色の波板、バリケードは黄色と黒の柵。看板つき
+  let CMAT = null;
+  function closureMats() {
+    if (CMAT) return CMAT;
+    const tex = (draw) => { const c = document.createElement('canvas'); c.width = c.height = 64; draw(c.getContext('2d')); const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; };
+    const shutTex = tex((g) => { g.fillStyle = '#9aa1a8'; g.fillRect(0, 0, 64, 64); for (let y = 0; y < 64; y += 8) { g.fillStyle = '#7d848c'; g.fillRect(0, y, 64, 3); g.fillStyle = '#b9c0c6'; g.fillRect(0, y + 3, 64, 1); } });
+    shutTex.repeat.set(1, 4);
+    const barTex = tex((g) => { g.fillStyle = '#ffcc1a'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#1b1b1b'; for (let x = -64; x < 64; x += 24) { g.beginPath(); g.moveTo(x, 64); g.lineTo(x + 12, 64); g.lineTo(x + 76, 0); g.lineTo(x + 64, 0); g.closePath(); g.fill(); } });
+    barTex.repeat.set(1, 1);
+    CMAT = {
+      shut: new THREE.MeshLambertMaterial({ map: shutTex }),
+      bar: new THREE.MeshLambertMaterial({ map: barTex }),
+      post: new THREE.MeshLambertMaterial({ color: 0x3a3a3a }),
+    };
+    return CMAT;
+  }
+  function signSprite(text, bg) {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 72;
+    const x = c.getContext('2d');
+    x.fillStyle = bg; x.fillRect(4, 4, 248, 64);
+    x.strokeStyle = '#ffffff'; x.lineWidth = 4; x.strokeRect(8, 8, 240, 56);
+    x.fillStyle = '#ffffff'; x.font = '900 38px "Zen Kaku Gothic New", sans-serif';
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text, 128, 38);
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true }));
+    s.scale.set(1.5, 0.42, 1);
+    return s;
+  }
+  function closureVis(dyn, c, hidden) {
+    const M3 = closureMats();
+    const holders = [];
+    const axis = axisOf(c.cells);
+    c.cells.forEach(([cx, cz]) => {
+      const x = map.wx(cx) + 0.5, z = cz + 0.5, y = map.wy(cx + 0.5, cz + 0.5);
+      const h = new THREE.Group();
+      if (axis === 'z') h.rotation.y = Math.PI / 2;
+      if (c.kind === 'shut') {
+        const H = cx >= OFF ? 3.95 : 4.25 - (y > 0.1 ? 0.3 : 0);
+        const m = new THREE.Mesh(new THREE.BoxGeometry(1.0, H, 0.16), M3.shut);
+        m.position.y = -H / 2;
+        h.add(m);
+        h.position.set(x, y + H, z); // 上から下りてくる
+      } else {
+        [-0.42, 0.42].forEach((px) => { const p = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.15, 0.08), M3.post); p.position.set(px, 0.575, 0); h.add(p); });
+        [0.5, 0.95].forEach((py) => { const r = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.2, 0.06), M3.bar); r.position.set(0, py, 0); h.add(r); });
+        h.position.set(x, y, z);
+      }
+      if (hidden) h.scale.y = 0.001;
+      dyn.add(h);
+      holders.push(h);
+    });
+    let sign = null;
+    if (c.sign) {
+      const mid = c.cells[Math.floor((c.cells.length - 1) / 2)];
+      // 階をまたぐもの（エスカレーター・階段）は、それぞれの階に看板を出す
+      const ends = [mid].concat(c.cells.filter((q) => (q[0] >= OFF) !== (mid[0] >= OFF)).slice(0, 1));
+      sign = ends.map(([cx, cz]) => {
+        const s = signSprite(c.sign, c.kind === 'shut' ? '#c0392b' : '#d35400');
+        const even = ends.length === 1 && c.cells.length % 2 === 0;
+        s.position.set(map.wx(cx) + (even && axis === 'x' ? 1 : 0.5), map.wy(cx + 0.5, cz + 0.5) + (c.kind === 'shut' ? 2.7 : 1.6), cz + (even && axis === 'z' ? 1 : 0.5));
+        s.visible = !hidden;
+        dyn.add(s);
+        return s;
+      });
+    }
+    return { holders, sign };
+  }
+
   // ======================= ステージ設定 =======================
   const D = Math.PI / 180;
   const S = 0, N = 180 * D, E = 90 * D, Wd = -90 * D;
@@ -453,10 +598,51 @@ TG.STAGES = TG.STAGES || {};
     order: 2,
     title: 'ショッピングモールにテロリスト',
     place: '舞台：2階建てのショッピングモール',
-    desc: '日曜日のデート中、モールが占拠された。はぐれた彼女を店や2つのフロアから探し出し、2人で脱出しろ。',
+    desc: '日曜日のデート中、モールが占拠された。毎回ちがう場所が封鎖される館内で、店や2つのフロアを抜けるルートを見つけて彼女を探し出し、2人で脱出しろ。',
     goal: 'ゴール：美咲と出入口のどれかから脱出',
     map,
     buildWorld: build,
+    // 遊ぶたびに封鎖する場所を決める（敵を置く前）
+    prepare(ctx, spot, diff) {
+      const plan = makePlan(ctx, this, spot, diff);
+      const G = ctx.G;
+      plan.A.forEach((c) => {
+        closeCells(c);
+        closureVis(ctx.dyn, c, false);
+        if (c.exit !== undefined) G.closedExits.add(c.exit);
+      });
+      G.closure = { closed: plan.A, armed: false, delay: 0, pending: plan.B.map((c) => ({ c, vis: closureVis(ctx.dyn, c, true), t: -1 })) };
+    },
+    // 彼女を助けると、追っ手が出口と通路をふさぎにかかる
+    onRescue(ctx) {
+      const C = ctx.G.closure;
+      if (!C || !C.pending.length) return;
+      C.armed = true;
+      C.delay = 1.2;
+      ctx.say('館内放送', '「人質が逃げたぞ！ 防火シャッターを下ろせ！」', 5);
+    },
+    tick(ctx, dt) {
+      const C = ctx.G.closure;
+      if (!C || !C.armed) return;
+      if (C.delay > 0) { C.delay -= dt; return; }
+      const G = ctx.G, P = ctx.P;
+      const who = [P].concat(G.followers, G.enemies);
+      for (const p of C.pending) {
+        if (p.t < 0) {
+          // 誰かが真下にいるあいだは閉めない（閉じ込めたり、はさんだりしない）
+          if (p.c.cells.some(([x, z]) => who.some((o) => Math.abs(o.x - (x + 0.5)) < 1.0 && Math.abs(o.z - (z + 0.5)) < 1.0))) continue;
+          closeCells(p.c);
+          if (p.c.exit !== undefined) G.closedExits.add(p.c.exit);
+          if (p.vis.sign) p.vis.sign.forEach((s) => { s.visible = true; });
+          p.t = 0;
+          ctx.sfx.door();
+          ctx.mapChanged();
+        } else if (p.t < 1) {
+          p.t = Math.min(1, p.t + dt / 1.2);
+          p.vis.holders.forEach((h) => { h.scale.y = Math.max(0.001, p.t); });
+        }
+      }
+    },
     sky: 0x9fb4c4,
     par: 540,
     titleCam: { x: 28, z: 20, r: 44, h: 30 },
@@ -509,6 +695,7 @@ TG.STAGES = TG.STAGES || {};
         { t: '悲鳴。逃げまどう人の波。つないでいた手が、ほどけた。' },
         { w: HERO, t: GIRL + '！！ ' + GIRL + 'ーっ！！' },
         { t: '気づけば俺は、靴屋の倉庫のロッカーに隠れていた。' },
+        { t: 'ガラガラガラ……館内のあちこちで、シャッターが下りていく音がする。' },
         { t: 'スマホが震える。' + GIRL + 'からのメッセージだ。' },
         { w: GIRL + '（メッセージ）', riddle: true },
         { t: '……それきり、既読はつかない。' },

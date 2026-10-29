@@ -77,6 +77,43 @@
   // ゲーム上の座標 → 3Dの座標
   function place(obj, x, z, y) { obj.position.set(M.wx(x), M.wy(x, z) + (y || 0), z); }
 
+  // 歩いて行けるマス（4方向＋階段のポータル）。ステージの封鎖が詰んでいないかの確認に使う
+  function reachFrom(x, z) {
+    const W = M.W, seen = new Uint8Array(W * M.H);
+    const s0 = nearestFree(Math.floor(x), Math.floor(z));
+    if (!s0) return seen;
+    const q = [s0[1] * W + s0[0]];
+    seen[q[0]] = 1;
+    while (q.length) {
+      const i = q.pop(), cx = i % W, cz = (i / W) | 0;
+      for (const [dx, dz] of DIRS4) {
+        const nx = cx + dx, nz = cz + dz;
+        if (M.solid(nx, nz)) continue;
+        let ni = nz * W + nx;
+        if (M.portal && M.portal[ni] >= 0) { seen[ni] = 1; ni = M.portal[ni]; }
+        if (seen[ni]) continue;
+        seen[ni] = 1;
+        q.push(ni);
+      }
+    }
+    return seen;
+  }
+  const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const reached = (seen, x, z) => !!seen[Math.floor(z) * M.W + Math.floor(x)];
+  // マップが変わった（シャッターが下りた）ときは、レーダーと全員の経路を作り直す
+  function mapChanged() {
+    drawMap();
+    if (!G) return;
+    for (const e of G.enemies) e.path = null;
+    for (const f of G.followers) f.path = null;
+    G.guideT = 0;
+  }
+  // ステージ固有の仕掛け（S.prepare / S.onRescue / S.tick）に渡す道具
+  const ctx = {
+    get G() { return G; }, get P() { return P; }, get dyn() { return dyn; }, get M() { return M; },
+    place, findPath, reachFrom, reached, mapChanged, say: (w, t, d) => say(w, t, d), sfx: AU.sfx, isActive: (e) => isActive(e),
+  };
+
   function loadStage(id) {
     if (S && S.id === id) return;
     S = TG.STAGES[id];
@@ -230,7 +267,12 @@
       enemies: [], items: [], hostages: [], followers: [], fx: [], noises: [],
       girl: null, girlFreed: false, freedRooms: new Set(), anySee: false, objKey: '', gateMsgT: 0,
       hint: { left: false, cqc: false, seen: false }, cleared: false, flags: {},
+      informants: [], hints: [], talk: null, say: null, closedExits: new Set(), exitPick: null,
     };
+    hideTalk();
+    // ステージ固有の準備（モールの封鎖など）。敵を置く前に、マップの形を決める
+    if (S.prepare) S.prepare(ctx, spot, diff);
+    drawMap();
     // プレイヤー（少し透かして、向こう側も見えるようにする）
     const pm = S.chars.player();
     pm.group.traverse((m) => {
@@ -289,6 +331,8 @@
       G.hostages.push({ x: h.x, z: h.z, model: m });
     });
 
+    spawnInformants(spot);
+
     // 助ける女の子
     {
       const m = S.chars.girl();
@@ -326,6 +370,88 @@
     place(glow, x, z, 0.04);
     dyn.add(glow);
     G.items.push({ type, x, z, n: n || 1, model: m, glow, base: M.wy(x, z), taken: false });
+  }
+
+  // ===================== 話しかけられる人（学校のクラスメートなど） =====================
+  // S.informants = { count, spots: [{ i, name, x, z, face, room, always }], hints: (spot) => ({ 種類: [{ short, line, rect }] }) }
+  // ヒントは女の子の実際の居場所から作るので、必ず正しい。種類（方角・場所・特徴）が偏らないように配る
+  const TALK_TIME = 1.8;
+  function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+  function spawnInformants(spot) {
+    const I = S.informants;
+    if (!I) return;
+    const pool = I.spots.filter((c) => c.room !== spot.room);
+    const chosen = pool.filter((c) => c.always).concat(shuffle(pool.filter((c) => !c.always))).slice(0, I.count);
+    const lines = I.hints(spot);
+    const types = shuffle(Object.keys(lines));
+    chosen.forEach((c, k) => {
+      const vs = lines[types[k % types.length]];
+      const hint = vs[Math.floor(k / types.length) % vs.length];
+      const m = S.chars.mob(c.i);
+      place(m.group, c.x, c.z);
+      m.group.rotation.y = c.face;
+      MD.pose(m, 'crouch', false, 0);
+      dyn.add(m.group);
+      const mark = MD.label('…', '#7fe3ff', 72, 0.7);
+      mark.material.depthTest = true;
+      mark.visible = false;
+      dyn.add(mark);
+      G.informants.push({ x: c.x, z: c.z, name: c.name, hint, model: m, mark, talked: false });
+    });
+  }
+  function informantNear() {
+    let best = null, bd = 1.6;
+    for (const c of G.informants) { const d = dist(P, c); if (d < bd) { bd = d; best = c; } }
+    return best;
+  }
+  // 話しかける：ひそひそ声でも少し時間がかかり、すぐ近くの敵には聞こえる
+  function startTalk(c) {
+    P.a = Math.atan2(c.x - P.x, c.z - P.z);
+    if (c.talked) { say(c.name, c.hint.line); return; }
+    G.talk = { c, t: 0 };
+    makeNoise(P.x, P.z, 2.4, 'talk');
+    AU.sfx.text();
+  }
+  function finishTalk() {
+    const c = G.talk.c;
+    G.talk = null;
+    c.talked = true;
+    c.mark.visible = false;
+    if (!G.hints.some((h) => h.short === c.hint.short)) G.hints.push(c.hint);
+    say(c.name, c.hint.line, 6);
+    AU.sfx.pickup();
+  }
+  // 聞いたヒントが指す範囲（重なった所）
+  function hintRegion() {
+    let r = null;
+    for (const h of G.hints) {
+      if (!h.rect) continue;
+      r = r ? { x0: Math.max(r.x0, h.rect.x0), z0: Math.max(r.z0, h.rect.z0), x1: Math.min(r.x1, h.rect.x1), z1: Math.min(r.z1, h.rect.z1) } : Object.assign({}, h.rect);
+    }
+    return r;
+  }
+  // 画面上部の吹き出し
+  const talkEl = $('talk'), talkWho = $('talkWho'), talkText = $('talkText'), talkBar = $('talkBar');
+  function say(who, text, t) {
+    if (!G) return;
+    G.say = { t: t || 5 };
+    talkWho.textContent = who;
+    talkText.textContent = text;
+    talkBar.hidden = true;
+    talkEl.hidden = false;
+  }
+  function hideTalk() { talkEl.hidden = true; }
+  function updateTalkUI(dt) {
+    if (G.talk) {
+      talkWho.textContent = G.talk.c.name;
+      talkText.textContent = '（ひそひそ……）';
+      talkBar.hidden = false;
+      talkBar.style.width = Math.min(100, (G.talk.t / TALK_TIME) * 100) + '%';
+      talkEl.hidden = false;
+    } else if (G.say) {
+      G.say.t -= dt;
+      if (G.say.t <= 0) { G.say = null; hideTalk(); }
+    } else if (!talkEl.hidden) hideTalk();
   }
 
   // ===================== 視界の扇形 =====================
@@ -777,9 +903,11 @@
   // 殴る：気づかれていなければ一撃で気絶、正面からだと3発
   function punchAction() {
     if (P.hidden) { exitLocker(false); return; }
-    if (P.actT > 0) return;
-    P.actT = 0.35;
+    if (G.talk || P.actT > 0) return;
     const e = enemyInReach();
+    // 目の前に敵がいなければ、近くの人に話しかける
+    if (!e) { const c = informantNear(); if (c) { startTalk(c); return; } }
+    P.actT = 0.35;
     if (!e) { AU.sfx.throw_(); return; }
     P.a = Math.atan2(e.x - P.x, e.z - P.z);
     if (isBehind(e)) { knockDown(e, e.boss ? 25 : 55, 'cqc'); return; }
@@ -798,6 +926,7 @@
     G.followers.unshift(g);
     AU.sfx.free();
     G.stats.freed++;
+    if (S.onRescue) S.onRescue(ctx);
   }
   // 近づくだけで起きること（鍵・手がかりを拾う、女の子を助ける、出口）
   function autoInteract() {
@@ -813,8 +942,9 @@
     if (g && !g.freed && dist(P, g) < 1.3) freeGirl();
     // 2人そろって出口に着いたらクリア
     if (G.girlFreed && (!S.key || P.inv.key) && g.hp > 0 && dist(P, g) < 4) {
-      for (const ex of S.exits) {
-        if (Math.hypot(P.x - ex.x, P.z - ex.z) > 1.8) continue;
+      for (let i = 0; i < S.exits.length; i++) {
+        const ex = S.exits[i];
+        if (G.closedExits.has(i) || Math.hypot(P.x - ex.x, P.z - ex.z) > 1.8) continue;
         worldRefs.onExit();
         clear();
         break;
@@ -844,6 +974,13 @@
       if (mag > 0.5) exitLocker(false);
       regen(dt);
       return;
+    }
+    // 話している間は動けない。スティックを倒すと話をやめる
+    if (G.talk) {
+      G.talk.t += dt;
+      if (mag > 0.5) G.talk = null;
+      else if (G.talk.t >= TALK_TIME) finishTalk();
+      if (G.talk) { regen(dt); return; }
     }
 
     if (mag > 0.12 && P.actT <= 0) {
@@ -991,22 +1128,38 @@
 
   // いちばん近い出口（3D上の距離で比べる。出口はどれも1階）
   function nearestExit() {
-    let best = S.exits[0], bd = 1e9;
-    for (const ex of S.exits) {
+    let best = S.exits.find((ex, i) => !G.closedExits.has(i)), bd = 1e9;
+    for (let i = 0; i < S.exits.length; i++) {
+      const ex = S.exits[i];
+      if (G.closedExits.has(i)) continue;
       const d = Math.hypot(M.wx(P.x) - M.wx(ex.x), P.z - ex.z) + (floorOf(P) !== M.floorOf(ex.x) ? 8 : 0);
       if (d < bd) { bd = d; best = ex; }
     }
+    return best;
+  }
+  // 歩く距離がいちばん短い出口（封鎖で遠回りになる出口は選ばない）
+  function bestExit() {
+    let best = null, bd = 1e9;
+    S.exits.forEach((ex, i) => {
+      if (G.closedExits.has(i)) return;
+      const q = findPath(P.x, P.z, ex.x, ex.z);
+      if (q && q.length < bd) { bd = q.length; best = ex; }
+    });
     return best;
   }
   // 共通のルール：最初の部屋を出る → 女の子を探す → 助ける →（鍵があれば鍵）→ 2人で出口へ
   function objective() {
     if (!G.hint.left) return S.leave;
     if (!G.girlFreed) {
-      if (!G.clueFound && dist(P, G.girl) > 7) return { text: S.texts.find + G.spot.hint, pos: null, label: '' };
+      if (!G.clueFound && dist(P, G.girl) > 7) {
+        // クラスメートから聞いた話があれば、それを並べる
+        const hs = G.hints.map((h) => h.short).join('・');
+        return { text: S.texts.find + (hs || G.spot.hint), pos: null, label: '' };
+      }
       return { text: S.texts.rescue, pos: G.girl, label: S.texts.girlLabel };
     }
     if (S.key && !P.inv.key) return S.key;
-    const ex = nearestExit();
+    const ex = G.exitPick && !G.closedExits.has(S.exits.indexOf(G.exitPick)) ? G.exitPick : nearestExit();
     return { text: S.exitText, pos: ex, label: ex.label };
   }
   // 画面とレーダーで指す場所。目的地が別の階なら、経路上の階段（エスカレーター）を指す
@@ -1034,8 +1187,10 @@
       if (e.code === 'KeyE' || e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyJ') pressed.action = true;
       if (e.code === 'KeyC' || e.code === 'ControlLeft') pressed.crouch = true;
       if (e.code === 'Escape' || e.code === 'KeyP') pause(true);
+      if (e.code === 'KeyM' || e.code === 'Tab') { e.preventDefault(); openMap(); }
       if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
     } else if (screen === 'pause' && (e.code === 'Escape' || e.code === 'KeyP')) pause(false);
+    else if (screen === 'map') { e.preventDefault(); closeMap(); }
   });
   window.addEventListener('keyup', (e) => { keys[e.code] = false; });
   window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; if (screen === 'play') pause(true); });
@@ -1169,8 +1324,9 @@
     }
     if (ph === 'alert') hud.phaseT.textContent = Math.ceil(G.alertT);
     else if (ph === 'evasion') hud.phaseT.textContent = Math.ceil(G.evaT);
-    setText(hud.actLabel, 'act', P.hidden ? '出る' : '殴る');
-    hud.actLabel.parentElement.classList.toggle('pulse', !!P.hidden);
+    const near = !P.hidden && !G.talk && !enemyInReach() ? informantNear() : null;
+    setText(hud.actLabel, 'act', P.hidden ? '出る' : G.talk ? '……' : near ? '話す' : '殴る');
+    hud.actLabel.parentElement.classList.toggle('pulse', !!P.hidden || !!(near && !near.talked));
     setText(hud.crouchLabel, 'cr', P.crouch ? '立つ' : 'しゃがむ');
     hud.crouch.classList.toggle('on', P.crouch);
     updateSusp();
@@ -1300,6 +1456,16 @@
       rctx.fillStyle = isActive(e) ? '#ff4a3a' : '#aa7a70';
       rctx.beginPath(); rctx.arc(e.x * RS, e.z * RS, RS * 0.7, 0, Math.PI * 2); rctx.fill();
     }
+    // クラスメートの話から絞れた範囲と、話しかけられる人
+    const hr = hintRegion();
+    if (hr) {
+      rctx.fillStyle = 'rgba(255,211,77,.13)';
+      rctx.fillRect(hr.x0 * RS, hr.z0 * RS, (hr.x1 - hr.x0 + 1) * RS, (hr.z1 - hr.z0 + 1) * RS);
+    }
+    for (const c of G.informants) {
+      rctx.fillStyle = c.talked ? '#5b7a88' : '#7fe3ff';
+      rctx.beginPath(); rctx.arc(c.x * RS, c.z * RS, RS * 0.6, 0, Math.PI * 2); rctx.fill();
+    }
     // 仲間
     rctx.fillStyle = '#ff9ac0';
     for (const f of G.followers) { rctx.beginPath(); rctx.arc(f.x * RS, f.z * RS, RS * 0.5, 0, Math.PI * 2); rctx.fill(); }
@@ -1326,6 +1492,86 @@
       rctx.fillStyle = 'rgba(255,170,60,.12)';
       rctx.fillRect(0, 0, w, h);
     }
+  }
+
+  // ===================== 全体マップ（レーダーをタップ） =====================
+  // ルートを考えるための地図。敵の位置は出さない（見つかるかどうかは現場で確かめる）
+  const bigmap = $('bigmap'), bigC = $('bigmapC');
+  function openMap() {
+    if (screen !== 'play') return;
+    screen = 'map';
+    bigmap.hidden = false;
+    drawBigMap();
+  }
+  function closeMap() {
+    if (screen !== 'map') return;
+    screen = 'play';
+    bigmap.hidden = true;
+  }
+  radar.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); openMap(); });
+  bigmap.addEventListener('pointerdown', (e) => { e.preventDefault(); closeMap(); });
+  function drawBigMap() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W = window.innerWidth, H = window.innerHeight;
+    bigC.width = Math.round(W * dpr); bigC.height = Math.round(H * dpr);
+    const c = bigC.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, W, H);
+    const padX = 20, top = 34, bottom = 14;
+    const k = Math.min((W - padX * 2) / M.W, (H - top - bottom) / M.H);
+    const ox = (W - M.W * k) / 2, oy = top + (H - top - bottom - M.H * k) / 2;
+    const X = (x) => ox + x * k, Z = (z) => oy + z * k;
+    c.imageSmoothingEnabled = false;
+    c.drawImage(mapCanvas, ox, oy, M.W * k, M.H * k);
+    const dot = (x, z, r, col) => { c.fillStyle = col; c.beginPath(); c.arc(X(x), Z(z), r, 0, Math.PI * 2); c.fill(); };
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    // 階の名前
+    if (M.floors > 1) {
+      c.font = '900 16px "Zen Kaku Gothic New", sans-serif';
+      c.fillStyle = '#ffd34d';
+      for (let fl = 0; fl < M.floors; fl++) {
+        let x0 = -1;
+        for (let x = 0; x < M.W; x++) if (M.wx(x) === 0 && M.floorOf(x) === fl) { x0 = x; break; }
+        if (x0 >= 0) c.fillText((fl + 1) + 'F' + (fl === floorOf(P) ? '（いまここ）' : ''), X(x0) + 46, oy - 14);
+      }
+    }
+    // ヒントの範囲
+    const hr = hintRegion();
+    if (hr) {
+      c.fillStyle = 'rgba(255,211,77,.16)';
+      c.strokeStyle = 'rgba(255,211,77,.8)';
+      c.lineWidth = 2;
+      c.fillRect(X(hr.x0), Z(hr.z0), (hr.x1 - hr.x0 + 1) * k, (hr.z1 - hr.z0 + 1) * k);
+      c.strokeRect(X(hr.x0), Z(hr.z0), (hr.x1 - hr.x0 + 1) * k, (hr.z1 - hr.z0 + 1) * k);
+    }
+    // 出口（閉じている出口は×）
+    c.font = '700 11px "Zen Kaku Gothic New", sans-serif';
+    S.exits.forEach((ex, i) => {
+      const closed = G.closedExits.has(i);
+      if (closed) {
+        c.strokeStyle = '#ff4a3a'; c.lineWidth = 3;
+        const r = Math.max(5, k * 0.9);
+        c.beginPath(); c.moveTo(X(ex.x) - r, Z(ex.z) - r); c.lineTo(X(ex.x) + r, Z(ex.z) + r); c.moveTo(X(ex.x) + r, Z(ex.z) - r); c.lineTo(X(ex.x) - r, Z(ex.z) + r); c.stroke();
+      } else dot(ex.x, ex.z, Math.max(5, k * 0.9), '#3ddc84');
+      const lx = clamp(X(ex.x), 40, W - 40), lz = clamp(Z(ex.z) + (ex.z > M.H / 2 ? 14 : -14), top - 8, H - 8);
+      c.fillStyle = closed ? '#ff8a7a' : '#bff5d4';
+      c.fillText(ex.label + (closed ? '（閉鎖）' : ''), lx, lz);
+    });
+    for (const ci of G.informants) dot(ci.x, ci.z, Math.max(3.5, k * 0.55), ci.talked ? '#5b7a88' : '#7fe3ff');
+    // 女の子（居場所が分かっていれば）
+    const g = G.girl;
+    if (g && (G.girlFreed || G.clueFound)) { c.font = '900 ' + Math.round(Math.max(12, k * 1.6)) + 'px sans-serif'; c.fillStyle = '#ff7aa8'; c.fillText('♥', X(g.x), Z(g.z)); }
+    const o = guideTarget();
+    if (o.pos) { c.strokeStyle = '#ffd34d'; c.lineWidth = 2; c.beginPath(); c.arc(X(o.pos.x), Z(o.pos.z), Math.max(7, k * 1.3), 0, Math.PI * 2); c.stroke(); }
+    // 自分
+    c.save();
+    c.translate(X(P.x), Z(P.z));
+    c.rotate(-P.a + Math.PI);
+    const r = Math.max(6, k * 1.1);
+    c.fillStyle = '#ffffff';
+    c.beginPath(); c.moveTo(0, -r * 1.3); c.lineTo(r * 0.9, r * 0.9); c.lineTo(-r * 0.9, r * 0.9); c.closePath(); c.fill();
+    c.restore();
   }
 
   function flash(kind) {
@@ -1368,6 +1614,10 @@
     if (G.girl && !G.girl.freed) {
       G.girl.heart.position.y = M.wy(G.girl.x, G.girl.z) + 1.5 + Math.sin(t * 3) * 0.1;
       G.girl.heart.visible = G.clueFound || dist(P, G.girl) < 7;
+    }
+    for (const c of G.informants) {
+      c.mark.visible = !c.talked && sameFloor(c, P) && dist(P, c) < 14;
+      if (c.mark.visible) place(c.mark, c.x, c.z, 1.45 + Math.sin(t * 3 + c.x) * 0.06);
     }
     // アイテム
     for (const it of G.items) {
@@ -1450,6 +1700,7 @@
 
   // ===================== 画面遷移 =====================
   function show(id) {
+    bigmap.hidden = true;
     ['title', 'hud', 'cine', 'pauseMenu', 'over', 'result'].forEach((k) => { $(k).hidden = k !== id && !(id === 'pauseMenu' && k === 'hud'); });
     document.body.classList.toggle('in-game', id !== 'title');
   }
@@ -1653,9 +1904,12 @@
       updateFollowers(dt);
       updatePhase(dt);
       updateFx(dt);
+      if (S.tick) S.tick(ctx, dt);
+      updateTalkUI(dt);
       G.guideT -= dt;
       if (G.guideT <= 0) {
         G.guideT = 0.5;
+        if (G.girlFreed && (!S.key || P.inv.key)) G.exitPick = bestExit();
         const o = objective();
         G.guide = o.pos ? findPath(P.x, P.z, o.pos.x, o.pos.z) : null;
       }

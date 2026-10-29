@@ -189,12 +189,18 @@ TG.STAGES = TG.STAGES || {};
 
   const HERO = 'ユウト', GIRL = '白石さん';
 
+  // クラスメートの目撃情報が指す範囲（レーダーと地図に、重なった部分が出る）
+  const EAST = { x0: 32, z0: 0, x1: 63, z1: 45 }, WEST = { x0: 0, z0: 0, x1: 31, z1: 45 };
+  const NORTH = { x0: 4, z0: 3, x1: 59, z1: 13 }, SOUTH = { x0: 4, z0: 17, x1: 59, z1: 27 }, OUTSIDE = { x0: 0, z0: 28, x1: 63, z1: 45 };
+  const line = (short, text, rect) => ({ short, line: '「' + text + '」', rect });
+  const RIDDLE = 'この女は別の場所に閉じ込めておけ。', RIDDLE_HINT = '誰か見ていないか？';
+
   TG.STAGES.school = {
     id: 'school',
     order: 1,
     title: '学校にテロリスト',
     place: '舞台：中学校',
-    desc: '5時間目の授業中、覆面の男たちが教室に。連れ去られた白石さんを見つけ出し、2人で学校を抜け出せ。',
+    desc: '5時間目の授業中、覆面の男たちが教室に。隠れているクラスメートから話を聞き出し、連れ去られた白石さんの居場所を突き止めろ。',
     goal: 'ゴール：白石さんと裏門から脱出',
     map,
     buildWorld: (group) => {
@@ -223,18 +229,55 @@ TG.STAGES = TG.STAGES || {};
     exitText: GIRL + 'と裏門へ',
     hostages,
     // 白石さんの居場所の候補。開始ごとにどれか1つ。
-    // riddle はオープニングで覆面の男が言う一言、hint は目的の欄に出る手がかり、
-    // charm は居場所に近い廊下・通り道に落ちているキーホルダー（拾うと居場所が分かる）
+    // 覆面の男は場所を言わない。手がかりは、隠れているクラスメートの目撃情報（talk）と、
+    // 居場所に近い廊下・通り道に落ちているキーホルダー（charm：拾うと居場所が分かる）
     girlSpots: [
-      { id: 'music', room: 'music', pos: C(46, 6), face: Math.PI, hint: 'ピアノのある部屋？', riddle: 'ピアノのある部屋にでも閉じ込めておけ。',
-        charm: C(45, 15), guard: [[40, 11, 3, E], [46, 12, 3, N, Wd]] },
-      { id: 'infirm', room: 'infirm', pos: C(19, 23), face: -Math.PI / 2, hint: 'ベッドのある部屋？', riddle: 'ベッドのある部屋に寝かせておけ。',
-        charm: C(17, 15), guard: [[18, 19, 4, S, E], [20, 24, 3, N, Wd]] },
-      { id: 'lab', room: 'lab', pos: C(54, 22), face: Math.PI, hint: '薬品くさい部屋？', riddle: '薬品くさい部屋の実験台にでも縛っておけ。',
-        charm: C(54, 15), guard: [[55, 19, 4, S, Wd], [54, 25, 3, N, E]] },
-      { id: 'shed', room: 'shed', pos: C(9, 35), face: Math.PI / 2, hint: '校舎の外の倉庫？', riddle: '校舎の外の倉庫に放り込んでおけ。',
-        charm: C(17, 33), guard: [[10, 33, 4, S, E], [12, 35, 3, Wd, N]] },
+      { id: 'music', room: 'music', pos: C(46, 6), face: Math.PI, hint: RIDDLE_HINT, riddle: RIDDLE,
+        charm: C(45, 15), guard: [[40, 11, 3, E], [46, 12, 3, N, Wd]],
+        talk: {
+          dir: [line('東側', '廊下を東の方へ引っぱられていったよ', EAST), line('東側', '東の階段のほうへ連れていかれた気がする', EAST)],
+          zone: [line('北側の教室', '廊下の北側の教室のどれかに入っていった', NORTH), line('北側の教室', '北側の部屋に押し込まれてるのが見えた', NORTH)],
+          feat: [line('ピアノの音', 'さっき、ピアノが「ジャーン」って鳴った', null), line('ピアノの音', '合唱の練習をする部屋だって言ってた', null)],
+        } },
+      { id: 'infirm', room: 'infirm', pos: C(19, 23), face: -Math.PI / 2, hint: RIDDLE_HINT, riddle: RIDDLE,
+        charm: C(17, 15), guard: [[18, 19, 4, S, E], [20, 24, 3, N, Wd]],
+        talk: {
+          dir: [line('西側', '西の方……職員室のほうへ歩かされてた', WEST), line('西側', '廊下を西に連れていかれたよ', WEST)],
+          zone: [line('南側の部屋', '廊下の南側の部屋に入っていったと思う', SOUTH), line('南側の部屋', '昇降口の並びの部屋のどれかだよ', SOUTH)],
+          feat: [line('「寝かせとけ」', '「ケガ人は寝かせとけ」って聞こえた', null), line('消毒液のにおい', '消毒液のにおいがする部屋って言ってた', null)],
+        } },
+      { id: 'lab', room: 'lab', pos: C(54, 22), face: Math.PI, hint: RIDDLE_HINT, riddle: RIDDLE,
+        charm: C(54, 15), guard: [[55, 19, 4, S, Wd], [54, 25, 3, N, E]],
+        talk: {
+          dir: [line('東側', '東の端の方へ連れていかれたよ', EAST), line('東側', '廊下をずっと東に歩かされてた', EAST)],
+          zone: [line('南側の部屋', '廊下の南側の部屋に入っていった', SOUTH), line('南側の部屋', '用務員室の並びのどこかだと思う', SOUTH)],
+          feat: [line('薬品のにおい', 'なんか薬品くさいにおいがしてた', null), line('薬品のにおい', '「ガスの元栓、閉めとけよ」って声がした', null)],
+        } },
+      { id: 'shed', room: 'shed', pos: C(9, 35), face: Math.PI / 2, hint: RIDDLE_HINT, riddle: RIDDLE,
+        charm: C(17, 33), guard: [[10, 33, 4, S, E], [12, 35, 3, Wd, N]],
+        talk: {
+          dir: [line('西側', '西の方へ連れていかれた', WEST), line('西側', '職員室の窓の外を通っていったよ', WEST)],
+          zone: [line('校舎の外', '窓から見えた。校舎の外に連れ出されてた', OUTSIDE), line('校舎の外', '昇降口から外に出ていったよ', OUTSIDE)],
+          feat: [line('体育の用具', '体育で使う物をしまう所って言ってた', null), line('体育の用具', 'マットとか跳び箱がある所だって', null)],
+        } },
     ],
+    // 隠れているクラスメート。毎回このうち count 人がいる（白石さんと同じ部屋の子はいない）。
+    // 近づいて「話す」と、白石さんの居場所について知っていることを1つ教えてくれる
+    informants: {
+      count: 4,
+      spots: [
+        { i: 100, name: '佐藤くん', ...C(13, 10), face: Math.PI, room: '1a', always: true },
+        { i: 101, name: '高橋さん', ...C(8, 24), face: Math.PI, room: 'staff' },
+        { i: 102, name: '中村くん', ...C(24, 21), face: E, room: 'entr' },
+        { i: 103, name: '小林さん', ...C(46, 25), face: N, room: 'janitor' },
+        { i: 104, name: '山本くん', ...C(50, 32), face: N, room: 'yard' },
+        { i: 105, name: '伊藤さん', ...C(31, 1), face: S, room: 'backyard' },
+        { i: 106, name: '渡辺くん', ...C(57, 11), face: Wd, room: '3a' },
+        { i: 107, name: '加藤さん', ...C(46, 11), face: N, room: 'music' },
+        { i: 109, name: '山田さん', ...C(19, 23), face: Wd, room: 'infirm' },
+      ],
+      hints: (spot) => spot.talk,
+    },
     names: { hero: HERO, girl: GIRL },
     chars: { player: () => TG.models.player(), girl: () => TG.models.girl(), mob: (i) => TG.models.student(i) },
     clueItem: 'charm',
@@ -256,6 +299,8 @@ TG.STAGES = TG.STAGES || {};
         { w: GIRL, t: 'や……やだ……っ！' },
         { t: '白石美月さん。クラスで、いや、学校でいちばん……僕がずっと好きだった人。' },
         { w: '覆面の男', riddle: true },
+        { t: '白石さんは、どこかへ連れていかれた。……どこへ？' },
+        { t: 'ほかにも隠れているクラスメートがいるはずだ。誰か、見ていたかもしれない。' },
         { t: '……今、動けるのは僕だけだ。' },
         { t: GIRL + 'を助け出して、2人でここから抜け出す。絶対に。' },
       ],
