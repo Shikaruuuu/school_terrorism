@@ -158,6 +158,7 @@ window.TG = window.TG || {};
     g2b: { room: '2b', route: [[33, 11, 3, Wd, E], [33, 4, 3, E, Wd]] },
     gmus: { room: 'music', route: [[43, 9, 4, N, Wd, E, S]] },
     gmus2: { room: 'music', route: [[40, 11, 3, E], [46, 12, 3, N, Wd]] },
+    hold: { route: [] }, // 白石さんの見張り（ルートは居場所ごと）
     g3a: { room: '3a', route: [[55, 4, 3, Wd, E], [55, 11, 3, E, Wd]] },
     entr: { route: [[26, 25, 4, S, E, Wd], [27, 19, 3, N, E]] },
     staff: { room: 'staff', route: [[8, 19, 3, E, Wd], [9, 25, 3, Wd, E]] },
@@ -213,17 +214,30 @@ window.TG = window.TG || {};
       id: 'rescue',
       kind: 'STORY 2',
       name: '好きな子を救え',
-      hint: '音楽室に連れ去られた白石さんを助け出し、2人で学校を抜け出せ。',
+      hint: 'どこかに連れ去られた白石さんを見つけ出し、2人で学校を抜け出せ。',
       goal: 'ゴール：白石さんと裏門から脱出',
       enemies: {
-        easy: ['g2a', 'corr', 'gmus', 'entr', 'yard', 'janitor'],
-        normal: ['g2a', 'corr', 'g2b', 'gmus', 'gmus2', 'entr', 'yard', 'gate', 'east', 'janitor'],
-        hard: ['g2a', 'corr', 'g1a', 'g2b', 'gmus', 'gmus2', 'g3a', 'entr', 'staff', 'yard', 'gate', 'back', 'east', 'janitor', 'boss'],
+        // hold は白石さんの見張り。居場所に合わせて配置が決まる
+        easy: ['g2a', 'corr', 'hold', 'entr', 'yard', 'janitor'],
+        normal: ['g2a', 'corr', 'g2b', 'gmus', 'hold', 'entr', 'yard', 'gate', 'east', 'janitor'],
+        hard: ['g2a', 'corr', 'g1a', 'g2b', 'gmus', 'hold', 'g3a', 'entr', 'staff', 'yard', 'gate', 'back', 'east', 'janitor', 'boss'],
       },
       items: [...commonItems, { type: 'key', ...C(48, 22) }, { type: 'stun', ...C(10, 19) }],
       start: { inv: { chalk: 2 } },
       hostages: { '1a': 6, '2a': 6, '2b': 6, '3a': 6, music: 0 },
-      girl: C(46, 6),
+      // 白石さんの居場所の候補。開始ごとにどれか1つ。
+      // riddle はオープニングで覆面の男が言う一言、hint は目的の欄に出る手がかり、
+      // charm は居場所に近い廊下・通り道に落ちているキーホルダー（拾うと居場所が分かる）
+      girlSpots: [
+        { id: 'music', room: 'music', pos: C(46, 6), face: Math.PI, hint: 'ピアノのある部屋？', riddle: 'ピアノのある部屋にでも閉じ込めておけ。',
+          charm: C(45, 15), guard: [[40, 11, 3, E], [46, 12, 3, N, Wd]] },
+        { id: 'infirm', room: 'infirm', pos: C(19, 23), face: -Math.PI / 2, hint: 'ベッドのある部屋？', riddle: 'ベッドのある部屋に寝かせておけ。',
+          charm: C(17, 15), guard: [[18, 19, 4, S, E], [20, 24, 3, N, Wd]] },
+        { id: 'lab', room: 'lab', pos: C(54, 22), face: Math.PI, hint: '薬品くさい部屋？', riddle: '薬品くさい部屋の実験台にでも縛っておけ。',
+          charm: C(54, 15), guard: [[55, 19, 4, S, Wd], [54, 25, 3, N, E]] },
+        { id: 'shed', room: 'shed', pos: C(9, 35), face: Math.PI / 2, hint: '校舎の外の倉庫？', riddle: '校舎の外の倉庫に放り込んでおけ。',
+          charm: C(17, 33), guard: [[10, 33, 4, S, E], [12, 35, 3, Wd, N]] },
+      ],
     },
     suppress: {
       id: 'suppress',

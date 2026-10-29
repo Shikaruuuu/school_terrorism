@@ -50,7 +50,7 @@
         { w: '覆面の男', t: 'おい、そこの女。こっちに来い。' },
         { w: '白石さん', t: 'や……やだ……っ！' },
         { t: '白石美月さん。クラスで、いや、学校でいちばん……僕がずっと好きだった人。' },
-        { w: '覆面の男', t: '音楽室に連れて行け。人質の「目玉」はまとめておけとリーダーの命令だ。' },
+        { w: '覆面の男', t: '{RIDDLE}', riddle: true },
         { t: '……今、動けるのは僕だけだ。' },
         { t: '白石さんを助け出して、2人でここから抜け出す。絶対に。' },
       ],
@@ -221,12 +221,26 @@
   let P = null; // プレイヤー
   let screen = 'title';
 
-  function newGame(modeId, diff) {
+  // 白石さんの居場所。同じプレイ（コンティニュー・最初から）では変えず、新しく始めるたびに選び直す
+  let lastSpot = -1;
+  function chooseGirlSpot(cfg, keep) {
+    const n = cfg.girlSpots.length;
+    if (!keep || lastSpot < 0) {
+      let i = Math.floor(Math.random() * n);
+      if (n > 1 && i === lastSpot) i = (i + 1 + Math.floor(Math.random() * (n - 1))) % n;
+      lastSpot = i;
+    }
+    return cfg.girlSpots[lastSpot];
+  }
+
+  function newGame(modeId, diff, keepSpot) {
     scene.remove(dyn);
     dyn = new THREE.Group();
     scene.add(dyn);
     const cfg = TG.MODES[modeId];
+    const spot = cfg.girlSpots ? chooseGirlSpot(cfg, keepSpot) : null;
     G = {
+      spot, clueFound: false,
       mode: modeId, cfg, diff, D: TG.DIFFS[diff], time: 0, phase: 'sneak', alertT: 0, evaT: 0, lastKnown: null,
       stats: { alerts: 0, downs: 0, ties: 0, freed: 0, damage: 0 },
       enemies: [], items: [], hostages: [], followers: [], fx: [], noises: [],
@@ -258,7 +272,7 @@
 
     // 敵
     cfg.enemies[diff].forEach((id) => {
-      const def = TG.ENEMIES[id];
+      const def = id === 'hold' ? { room: spot.room, route: spot.guard } : TG.ENEMIES[id];
       const route = def.route.map((r) => ({ x: r[0] + 0.5, z: r[1] + 0.5, wait: r[2] || 0, looks: r.slice(3) }));
       const model = MD.terrorist(!!def.boss);
       dyn.add(model.group);
@@ -271,13 +285,15 @@
         id, def, route, boss: !!def.boss, room: def.room, x: route[0].x, z: route[0].z, a: route[0].looks[0] !== undefined ? route[0].looks[0] : 0,
         wp: 0, atWp: true, waitT: route[0].wait, state: 'patrol', path: null, pathI: 0, goal: null, susp: 0, hp: def.boss ? 3 : 3,
         model, mark, markT: 0, markText: '', cone, downT: 0, shootT: 1, reactT: 0, stun: 0, repathT: 0, stuckT: 0, lookT: 0,
-        seenBodies: new Set(), bodyT: Math.random() * 0.3, seeP: 0, moving: false, moveSpeed: 0, tieT: 0, grabT: 0,
+        seenBodies: new Set(), bodyT: Math.random() * 0.3, seeP: 0, moving: false, moveSpeed: 0, tieT: 0,
       };
       G.enemies.push(e);
     });
 
     // 拾える物は裏門の鍵だけ（近づくと自動で拾う）
     cfg.items.filter((it) => it.type === 'key').forEach((it) => spawnItem(it.type, it.x, it.z, it.n));
+    // 手がかり：白石さんのキーホルダーが、居場所の近くの通り道に落ちている
+    if (spot) spawnItem('charm', spot.charm.x, spot.charm.z);
 
     // 人質
     Object.entries(cfg.hostages).forEach(([roomId, n]) => {
@@ -294,16 +310,19 @@
     });
 
     // 白石さん
-    if (cfg.girl) {
+    if (spot) {
       const m = MD.girl();
-      m.group.position.set(cfg.girl.x, 0, cfg.girl.z);
-      m.group.rotation.y = Math.PI;
+      m.group.position.set(spot.pos.x, 0, spot.pos.z);
+      m.group.rotation.y = spot.face;
       MD.pose(m, 'sit', false, 0);
       dyn.add(m.group);
+      // ハートは壁越しには見えない（近づくか、キーホルダーを拾うまでは探す）
       const heart = MD.label('♥', '#ff7aa8', 72, 0.7);
-      heart.position.set(cfg.girl.x, 1.6, cfg.girl.z);
+      heart.material.depthTest = true;
+      heart.position.set(spot.pos.x, 1.6, spot.pos.z);
+      heart.visible = false;
       dyn.add(heart);
-      G.girl = { x: cfg.girl.x, z: cfg.girl.z, a: Math.PI, model: m, heart, freed: false, crouch: false, grabT: 0, moving: false, kind: 'girl' };
+      G.girl = { x: spot.pos.x, z: spot.pos.z, a: spot.face, model: m, heart, freed: false, crouch: false, moving: false, kind: 'girl', hp: 100, regenT: 0, hurtT: 0, speedNow: 0 };
     }
 
     worldRefs.backGate.visible = true;
@@ -322,7 +341,7 @@
     const m = MD.item(type);
     m.position.set(x, 0.05, z);
     dyn.add(m);
-    const glow = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.36, 24), new THREE.MeshBasicMaterial({ color: type === 'key' ? 0xffd34d : 0x9ff0ff, transparent: true, opacity: 0.7, depthWrite: false }));
+    const glow = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.36, 24), new THREE.MeshBasicMaterial({ color: type === 'key' ? 0xffd34d : type === 'charm' ? 0xff8fb6 : 0x9ff0ff, transparent: true, opacity: 0.7, depthWrite: false }));
     glow.rotation.x = -Math.PI / 2;
     glow.position.set(x, 0.04, z);
     dyn.add(glow);
@@ -544,13 +563,16 @@
     e.shootT = (e.boss ? 0.6 : 1.05) + Math.random() * 0.5;
     const d = dist(e, target);
     let p = clamp(0.8 - d * 0.045, 0.22, 0.78);
-    if (P.crouch) p *= 0.75;
+    if (target.crouch) p *= 0.75;
+    if (target === G.girl) p *= 0.6;
     const hit = Math.random() < p;
     const mx = e.x + Math.sin(e.a) * 0.5, mz = e.z + Math.cos(e.a) * 0.5;
     if (hit) tracer(mx, mz, target.x, target.z);
     else tracer(mx, mz, target.x + (Math.random() - 0.5) * 2.2, target.z + (Math.random() - 0.5) * 2.2);
     AU.sfx.shot();
-    if (hit) damage(e.boss ? 11 : 8);
+    if (!hit) return;
+    if (target === P) damage(e.boss ? 11 : 8);
+    else damageGirl(e.boss ? 8 : 6);
   }
 
   function damage(n) {
@@ -563,6 +585,20 @@
     AU.sfx.hit();
     flash('hurt');
     if (P.hp <= 0) { P.hp = 0; gameOver('dead'); }
+  }
+
+  // 白石さんのダメージ（主人公と同じく、難易度で軽くなる）
+  function damageGirl(n) {
+    const g = G.girl;
+    if (!g || !G.girlFreed || G.cleared || screen !== 'play') return;
+    n *= G.D.dmg;
+    g.hp -= n;
+    g.regenT = 6;
+    g.hurtT = 0.4;
+    G.stats.girlDamage = (G.stats.girlDamage || 0) + n;
+    AU.sfx.hit();
+    flash('hurtGirl');
+    if (g.hp <= 0) { g.hp = 0; gameOver('girl'); }
   }
 
   function updateEnemy(e, dt) {
@@ -582,9 +618,12 @@
     let target = null, best = 0;
     const vp = sees(e, P.x, P.z, playerVisMul(), P.crouch);
     if (vp > 0) { target = P; best = vp; }
-    for (const f of G.followers) {
-      const v = sees(e, f.x, f.z, f.crouch ? 0.5 : 0.85, f.crouch);
-      if (v > best) { best = v; target = f; }
+    // 主人公が見えているときは主人公を優先（白石さんばかり狙われないように）
+    if (!target) {
+      for (const f of G.followers) {
+        const v = sees(e, f.x, f.z, f.crouch ? 0.5 : 0.85, f.crouch);
+        if (v > best) { best = v; target = f; }
+      }
     }
     e.seeP = target === P ? vp : 0;
 
@@ -640,9 +679,10 @@
           turnTo(e, Math.atan2(tgt.x - e.x, tgt.z - e.z), dt * 8);
         }
         e.shootT -= dt;
-        if (d < 1.1 && tgt === P) {
-          if (e.shootT <= 0) { e.shootT = 1.1; AU.sfx.punch(); damage(9); }
-        } else if (e.shootT <= 0 && tgt === P && d < 13) enemyShoot(e, P);
+        const canHurt = tgt === P || tgt === G.girl;
+        if (d < 1.1 && canHurt) {
+          if (e.shootT <= 0) { e.shootT = 1.1; AU.sfx.punch(); if (tgt === P) damage(9); else damageGirl(7); }
+        } else if (e.shootT <= 0 && canHurt && d < 13) enemyShoot(e, tgt);
       } else {
         // 最後に見た位置へ
         const lk = G.lastKnown;
@@ -657,8 +697,6 @@
           spotted(e, P);
         }
       }
-      // 白石さんを捕まえる
-      if (G.girl && G.girlFreed && dist(e, G.girl) < 1.0) G.girl.grabT += dt;
       return;
     }
 
@@ -799,6 +837,7 @@
       it.taken = true;
       dyn.remove(it.model); dyn.remove(it.glow);
       if (it.type === 'key') P.inv.key = 1;
+      if (it.type === 'charm') G.clueFound = true;
       AU.sfx.pickup();
     }
     const g = G.girl;
@@ -809,7 +848,7 @@
         if (!G.enemies.some((e) => e.room === h.room && isActive(e))) freeRoom(h.room);
       }
     } else if (P.inv.key && Math.hypot(P.x - TG.BACKGATE.x, P.z - TG.BACKGATE.z) < 1.8) {
-      if (G.mode !== 'rescue' || (G.girlFreed && dist(P, G.girl) < 4)) {
+      if (G.mode !== 'rescue' || (G.girlFreed && G.girl.hp > 0 && dist(P, G.girl) < 4)) {
         worldRefs.backGate.visible = false;
         clear();
       }
@@ -886,23 +925,77 @@
   }
 
   // ついてくる仲間（白石さん／解放した生徒）
+  // 主人公の少し後ろを保ち、まっすぐ行けるときは直進、壁や机があるときは経路をたどる。
+  // 引っかかったら経路を引き直し、横に避ける。瞬間移動はしない。
+  const R_FOLLOW = 0.24;
+  function walkable(x0, z0, x1, z1) {
+    const d = Math.hypot(x1 - x0, z1 - z0);
+    const n = Math.max(1, Math.ceil(d / 0.2));
+    for (let i = 1; i <= n; i++) {
+      const t = i / n;
+      if (collides(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t, R_FOLLOW + 0.02)) return false;
+    }
+    return true;
+  }
   function updateFollowers(dt) {
-    const tr = P.trail;
     G.followers.forEach((f, i) => {
       f.moving = false;
-      const idx = tr.length - 1 - (i + 1) * 4;
-      const tp = tr[Math.max(0, idx)] || P;
-      const dx = tp.x - f.x, dz = tp.z - f.z, d = Math.hypot(dx, dz);
+      f.speedNow = 0;
+      if (f.repathT === undefined) { f.repathT = 0; f.stuckT = 0; f.path = null; f.pathI = 0; }
+      const keep = 1.15 + i * 0.75; // 主人公との距離
       const pd = dist(f, P);
-      if (d > 0.3 && pd > 0.9) {
-        const sp = Math.min(SPEED.run * 1.05, Math.max(SPEED.walk, d * 2.2));
+      if (pd > keep && !P.hidden) {
+        let tx = P.x, tz = P.z;
+        if (!walkable(f.x, f.z, P.x, P.z)) {
+          f.repathT -= dt;
+          if (!f.path || f.repathT <= 0) { f.repathT = 0.45; f.path = findPath(f.x, f.z, P.x, P.z); f.pathI = 0; }
+          if (f.path && f.path.length) {
+            // 見通せる先のノードまで飛ばして、角を自然に曲がる
+            while (f.pathI < f.path.length - 1 && walkable(f.x, f.z, f.path[f.pathI + 1].x, f.path[f.pathI + 1].z)) f.pathI++;
+            const n = f.path[Math.min(f.pathI, f.path.length - 1)];
+            tx = n.x; tz = n.z;
+            if (Math.hypot(n.x - f.x, n.z - f.z) < 0.25) f.pathI++;
+          }
+        } else f.path = null;
+        const dx = tx - f.x, dz = tz - f.z, d = Math.hypot(dx, dz) || 1;
+        // 離れているほど速く。主人公より少しだけ速く走れるので置いていかれない
+        const gap = pd - keep;
+        let sp = gap > 3 ? SPEED.run * 1.08 : clamp(gap * 2.2, 0.6, P.running ? SPEED.run * 1.05 : SPEED.walk * 1.15);
+        if (P.crouch && gap < 3) sp = Math.min(sp, SPEED.crouch * 1.25);
+        const step = Math.min(d, sp * dt);
         const bx = f.x, bz = f.z;
-        moveBy(f, (dx / d) * Math.min(d, sp * dt), (dz / d) * Math.min(d, sp * dt), 0.24);
-        f.moving = Math.hypot(f.x - bx, f.z - bz) > 0.001;
-        f.a += angDiff(f.a, Math.atan2(dx, dz)) * Math.min(1, dt * 10);
-        if (pd > 14) { f.x = tp.x; f.z = tp.z; }
+        moveBy(f, (dx / d) * step, (dz / d) * step, R_FOLLOW);
+        const moved = Math.hypot(f.x - bx, f.z - bz);
+        if (moved < step * 0.3) {
+          f.stuckT += dt;
+          if (f.stuckT > 0.35) {
+            // 横にずれて抜ける
+            const side = (Math.floor(G.time * 2) % 2 ? 1 : -1) * step;
+            moveBy(f, (-dz / d) * side, (dx / d) * side, R_FOLLOW);
+            f.path = null; f.repathT = 0;
+          }
+        } else f.stuckT = 0;
+        f.moving = moved > 0.002;
+        f.speedNow = moved / Math.max(dt, 1e-4);
+        if (f.moving) f.a += angDiff(f.a, Math.atan2(dx, dz)) * Math.min(1, dt * 10);
+      } else if (!f.moving) {
+        f.a += angDiff(f.a, Math.atan2(P.x - f.x, P.z - f.z)) * Math.min(1, dt * 3);
       }
-      f.crouch = P.crouch || !!P.hidden;
+      // 主人公やほかの仲間と重ならない
+      const sep = (o, r) => {
+        const dx = f.x - o.x, dz = f.z - o.z, d = Math.hypot(dx, dz);
+        if (d < r && d > 0.001) moveBy(f, (dx / d) * (r - d) * 0.5, (dz / d) * (r - d) * 0.5, R_FOLLOW);
+      };
+      sep(P, 0.7);
+      G.followers.forEach((o) => { if (o !== f) sep(o, 0.55); });
+      // しゃがむのは主人公に合わせる。見つかっている間は、止まったら身をかがめる
+      f.crouch = P.crouch || !!P.hidden || (G.phase === 'alert' && !f.moving);
+      // 白石さんの体力は、主人公と同じく見つかっていないときに回復する
+      if (f.kind === 'girl') {
+        if (f.hurtT > 0) f.hurtT -= dt;
+        if (f.regenT > 0) f.regenT -= dt;
+        else if (G.phase === 'sneak' && f.hp < 100) f.hp = Math.min(100, f.hp + dt * 1.2);
+      }
       // 仲間の攻撃（警戒中のみ）と、縛り上げ
       if (f.kind === 'ally') {
         f.atkT -= dt;
@@ -929,9 +1022,6 @@
         }
       }
     });
-    // 白石さんが捕まった
-    if (G.girl && G.girlFreed && G.girl.grabT > 1.4) gameOver('girl');
-    if (G.girl && G.girlFreed && G.phase !== 'alert') G.girl.grabT = Math.max(0, G.girl.grabT - dt);
   }
 
   // ===================== フェーズ =====================
@@ -969,6 +1059,7 @@
     if (m === 'escape' || m === 'rescue') {
       if (m === 'rescue' && !G.girlFreed) {
         if (!out2a) return { text: '教室から出ろ', pos: DOOR_2A, label: '出口' };
+        if (!G.clueFound && dist(P, G.girl) > 7) return { text: '白石さんを探せ：' + G.spot.hint, pos: null, label: '' };
         return { text: '白石さんを助けろ', pos: G.girl, label: '白石さん' };
       }
       if (!out2a) return { text: '教室から出ろ', pos: DOOR_2A, label: '出口' };
@@ -1104,7 +1195,7 @@
 
   // ===================== HUD =====================
   const hud = {
-    life: $('lifeFill'), obj: $('obj'), phase: $('phase'), phaseT: $('phaseT'),
+    life: $('lifeFill'), girlLife: $('girlLife'), girlFill: $('girlFill'), obj: $('obj'), phase: $('phase'), phaseT: $('phaseT'),
     actLabel: $('btnALabel'), crouch: $('btnC'), crouchLabel: $('btnCLabel'),
   };
   let lastHud = {};
@@ -1115,6 +1206,15 @@
     const hp = Math.ceil(P.hp);
     hud.life.style.width = hp + '%';
     hud.life.classList.toggle('low', hp <= 30);
+    const g = G.girl;
+    hud.girlLife.hidden = !(g && G.girlFreed);
+    if (g && G.girlFreed) {
+      const gh = Math.ceil(g.hp);
+      hud.girlFill.style.width = gh + '%';
+      hud.girlFill.classList.toggle('low', gh <= 30);
+      hud.girlLife.classList.toggle('low', gh <= 30);
+      hud.girlLife.classList.toggle('hit', g.hurtT > 0);
+    }
     setText(hud.obj, 'obj', objective().text);
     // フェーズ（文字ではなく、画面の縁の色で知らせる）
     const ph = G.phase;
@@ -1294,7 +1394,7 @@
     pg.visible = !P.hidden && P.camDist > 0.3;
     pg.position.set(P.x, 0, P.z);
     pg.rotation.y = P.a;
-    MD.pose(P.model, P.crouch ? 'crouch' : 'stand', P.moving, dt, P.running ? 12 : P.crouch ? 6 : 8);
+    MD.pose(P.model, P.crouch ? 'crouch' : P.running && P.moving ? 'run' : 'stand', P.moving, dt, P.running ? 12 : P.crouch ? 6 : 8);
     if (P.actT > 0) { P.model.aR.sh.rotation.x = -1.5; P.model.aR.el.rotation.x = -0.2; }
     // 敵
     for (const e of G.enemies) {
@@ -1302,7 +1402,7 @@
       g.position.set(e.x, 0, e.z);
       g.rotation.y = e.a;
       const st = e.state === 'down' ? 'down' : e.state === 'tied' ? 'tied' : 'stand';
-      MD.pose(e.model, st, e.moving, dt, e.moveSpeed > 3 ? 11 : 7);
+      MD.pose(e.model, st === 'stand' && e.moving && e.moveSpeed > 3 ? 'run' : st, e.moving, dt, e.moveSpeed > 3 ? 11 : 7);
       e.mark.position.set(e.x, st === 'stand' ? 2.45 : 0.9, e.z);
       updateCone(e);
     }
@@ -1310,9 +1410,13 @@
     for (const f of G.followers) {
       f.model.group.position.set(f.x, 0, f.z);
       f.model.group.rotation.y = f.a;
-      MD.pose(f.model, f.crouch ? 'crouch' : 'stand', f.moving, dt, 9);
+      const fast = f.speedNow > 3.2;
+      MD.pose(f.model, f.crouch ? 'crouch' : fast ? 'run' : 'stand', f.moving, dt, fast ? 12 : f.crouch ? 6 : 8);
     }
-    if (G.girl && !G.girl.freed) G.girl.heart.position.y = 1.5 + Math.sin(t * 3) * 0.1;
+    if (G.girl && !G.girl.freed) {
+      G.girl.heart.position.y = 1.5 + Math.sin(t * 3) * 0.1;
+      G.girl.heart.visible = G.clueFound || dist(P, G.girl) < 7;
+    }
     // アイテム
     for (const it of G.items) {
       if (it.taken) continue;
@@ -1424,14 +1528,14 @@
   function startMode(modeId, diff, quick) {
     AU.init();
     tryLandscape();
-    newGame(modeId, diff);
+    newGame(modeId, diff, quick);
     const begin = () => {
       screen = 'play';
       show('hud');
     };
     // コンティニュー時はオープニングを飛ばす
     if (quick) begin();
-    else startCine(OPENING.concat(STORY[modeId].intro), begin);
+    else startCine(OPENING.concat(STORY[modeId].intro.map((l) => (l.riddle ? { w: l.w, t: G.spot.riddle } : l))), begin);
   }
 
   function pause(on) {
@@ -1444,7 +1548,7 @@
     screen = 'over';
     AU.bgm('none');
     AU.sfx.over();
-    $('overLine').textContent = kind === 'girl' ? '白石さんが、また連れて行かれてしまった……' : NAME + '？ ' + NAME + '！？ ' + NAME + 'ーーーーッ！！';
+    $('overLine').textContent = kind === 'girl' ? '白石さん！？ 白石さーーーん！！' : NAME + '？ ' + NAME + '！？ ' + NAME + 'ーーーーッ！！';
     setTimeout(() => show('over'), 600);
     flash('hurt');
   }
@@ -1467,29 +1571,48 @@
     if (s.alerts <= 5) return ['ドッグ', 'あばれる中学2年生'];
     return ['チキン', 'ただの迷惑な生徒'];
   }
+  // 総合ランク（S/A/B/C）：見つかった回数・時間・受けたダメージ・難易度から点数を出す
+  const PAR = { escape: 300, rescue: 420, suppress: 720 };
+  function gradeOf() {
+    const s = G.stats;
+    let score = 100;
+    score -= s.alerts * 12;
+    score -= Math.max(0, G.time - PAR[G.mode]) / 12;
+    score -= s.damage * 0.15;
+    if (G.mode === 'rescue') score -= (s.girlDamage || 0) * 0.2;
+    score += { easy: -12, normal: 0, hard: 10 }[G.diff];
+    return score >= 90 ? 'S' : score >= 72 ? 'A' : score >= 50 ? 'B' : 'C';
+  }
   function fmtTime(t) { const m = Math.floor(t / 60), s = Math.floor(t % 60); return m + '分' + String(s).padStart(2, '0') + '秒'; }
 
   function showResult() {
     screen = 'result';
     show('result');
     const [code, sub] = rankOf();
+    const grade = gradeOf();
+    $('resGrade').textContent = grade;
+    $('resGrade').className = 'g-' + grade;
     $('resMode').textContent = G.cfg.name + '（' + G.D.name + '）　MISSION COMPLETE';
     $('resRank').textContent = code;
     $('resRankSub').textContent = sub;
     const s = G.stats;
-    const rows = [['クリアタイム', fmtTime(G.time)], ['見つかった回数', s.alerts + '回'], ['気絶させた数', s.downs + '人'], ['縛り上げた数', s.ties + '人'], ['受けたダメージ', s.damage]];
+    const rows = [['クリアタイム', fmtTime(G.time)], ['見つかった回数', s.alerts + '回'], ['気絶させた数', s.downs + '人'], ['縛り上げた数', s.ties + '人'], ['受けたダメージ', Math.round(s.damage)]];
+    if (G.mode === 'rescue') rows.push(['白石さんのダメージ', Math.round(s.girlDamage || 0)]);
     if (G.mode === 'suppress') rows.push(['解放した仲間', s.freed + '人']);
     $('resStats').innerHTML = rows.map(([k, v]) => '<div><dt>' + k + '</dt><dd>' + v + '</dd></div>').join('');
-    saveBest(G.mode + '-' + G.diff, code, G.time, s.alerts);
+    saveBest(G.mode + '-' + G.diff, code, G.time, s.alerts, grade);
   }
 
   // ===================== 記録 =====================
   const RANK_ORDER = ['チキン', 'ドッグ', 'ハウンド', 'フォックス', 'ゴースト'];
   function loadBest() { try { return JSON.parse(localStorage.getItem('tg-best') || '{}'); } catch (e) { return {}; } }
-  function saveBest(mode, rank, time, alerts) {
+  const GRADE_ORDER = ['C', 'B', 'A', 'S'];
+  function saveBest(mode, rank, time, alerts, grade) {
     const b = loadBest();
     const cur = b[mode];
-    if (!cur || RANK_ORDER.indexOf(rank) > RANK_ORDER.indexOf(cur.rank) || (rank === cur.rank && time < cur.time)) b[mode] = { rank, time, alerts };
+    const better = !cur || GRADE_ORDER.indexOf(grade) > GRADE_ORDER.indexOf(cur.grade || 'C') ||
+      (grade === (cur.grade || 'C') && (RANK_ORDER.indexOf(rank) > RANK_ORDER.indexOf(cur.rank) || (rank === cur.rank && time < cur.time)));
+    if (better) b[mode] = { rank, time, alerts, grade };
     try { localStorage.setItem('tg-best', JSON.stringify(b)); } catch (e) { /* 保存できなくても続行 */ }
   }
 
@@ -1521,7 +1644,7 @@
       b.className = 'diff diff-' + id;
       const rec = best[m.id + '-' + id];
       b.innerHTML = '<span class="diff-name">' + d.name + '</span><span class="diff-count">テロリスト ' + m.enemies[id].length + '人</span>' +
-        (rec ? '<span class="diff-best">' + rec.rank + '／' + fmtTime(rec.time) + '</span>' : '');
+        (rec ? '<span class="diff-best">' + (rec.grade ? 'ランク' + rec.grade + '／' : '') + rec.rank + '</span>' : '');
       b.addEventListener('click', () => { $('diffPick').hidden = true; startMode(m.id, id); });
       box.appendChild(b);
     });
@@ -1619,5 +1742,5 @@
   // HUD表示後にレーダーのサイズを合わせる
   new ResizeObserver(sizeRadar).observe(radar);
 
-  TG.debug = { get G() { return G; }, get P() { return P; }, get screen() { return screen; }, startMode, cineNext, clear: () => clear() };
+  TG.debug = { get G() { return G; }, get P() { return P; }, get screen() { return screen; }, startMode, cineNext, clear: () => clear(), findPath, setSpot: (i) => { lastSpot = i; } };
 })();

@@ -49,6 +49,12 @@
       g.add(box(0.34, 0.22, 0.24, 0xf5f5f5, 0, 0.11, 0));
       g.add(box(0.2, 0.06, 0.02, 0xd42a20, 0, 0.12, 0.125));
       g.add(box(0.06, 0.18, 0.02, 0xd42a20, 0, 0.12, 0.125));
+    } else if (type === 'charm') {
+      // 白石さんのリュックについていたピンクのキーホルダー
+      const h = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 12), mat(0xf06a9a));
+      h.scale.set(1, 0.9, 0.55); h.position.y = 0.1; g.add(h);
+      const r = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.008, 8, 16), mat(0xd9d9d9));
+      r.position.y = 0.2; g.add(r);
     } else if (type === 'key') {
       g.add(box(0.06, 0.04, 0.24, 0xf2c94c, 0, 0.1, 0));
       const r = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.025, 8, 16), mat(0xf2c94c));

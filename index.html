@@ -78,6 +78,13 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 .life-bar { display: block; height: 8px; background: rgba(0,0,0,.55); border-radius: 4px; overflow: hidden; box-shadow: 0 0 0 1px rgba(255,255,255,.18); }
 #lifeFill { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #4fd07e, #8fe0b0); transition: width .2s; }
 #lifeFill.low { background: linear-gradient(90deg, #ff3b30, #ff7a5a); }
+/* 白石さんの体力：ハートとピンクのバー */
+.girl-life { display: flex; align-items: center; gap: 6px; }
+.girl-life b { color: var(--pink); font-size: 14px; line-height: 1; transition: transform .15s; }
+.girl-life .life-bar { flex: 1; height: 7px; }
+#girlFill { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #ff6f9f, #ffb3cd); transition: width .2s; }
+#girlLife.low b, #girlFill.low { animation: blink .6s ease-in-out infinite; }
+#girlLife.hit b { transform: scale(1.4); }
 #obj { justify-self: start; font-size: 13px; font-weight: 700; background: rgba(0,0,0,.45); border-left: 3px solid var(--gold); padding: 3px 10px; border-radius: 2px; }
 .tr { position: absolute; top: max(10px, env(safe-area-inset-top, 0px)); right: var(--safe-r); display: flex; flex-direction: row-reverse; align-items: flex-start; gap: 6px; z-index: 1; }
 #radar { width: clamp(84px, min(15vw, 32vh), 150px); height: clamp(84px, min(15vw, 32vh), 150px); border: 2px solid var(--line); border-radius: 50%; background: #06130d; box-shadow: 0 0 0 1px rgba(0,0,0,.6); }
@@ -144,6 +151,7 @@ body.in-locker #lockerView { display: block; }
 /* ---------- 演出 ---------- */
 #flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; }
 #flash.hurt { background: radial-gradient(ellipse at center, transparent 40%, rgba(255,0,0,.55)); animation: fl .45s ease-out; }
+#flash.hurtGirl { background: radial-gradient(ellipse at center, transparent 45%, rgba(255,100,160,.5)); animation: fl .45s ease-out; }
 #flash.alert { background: rgba(255,59,48,.18); animation: fl .6s ease-out; }
 #flash.white { background: #fff; animation: fl .5s ease-out; }
 @keyframes fl { from { opacity: 1; } to { opacity: 0; } }
@@ -178,6 +186,14 @@ body.in-locker #lockerView { display: block; }
 #result .card { width: min(560px, 100%); }
 .res-mode { font-size: 12px; letter-spacing: .25em; color: var(--radar); }
 .res-rank { display: grid; gap: 2px; }
+.res-top { display: flex; justify-content: center; align-items: center; gap: 22px; flex-wrap: wrap; }
+.res-cap { font-size: 12px; color: var(--dim); }
+.res-grade { display: grid; justify-items: center; }
+#resGrade { font-family: var(--f-display); font-weight: 400; font-size: clamp(56px, 12vw, 88px); line-height: 1; }
+#resGrade.g-S { color: #ffd34d; text-shadow: 0 0 18px rgba(255,211,77,.6); }
+#resGrade.g-A { color: #ff8fb6; }
+#resGrade.g-B { color: var(--radar); }
+#resGrade.g-C { color: var(--dim); }
 #resRank { font-family: var(--f-display); font-size: clamp(34px, 7vw, 54px); color: var(--gold); line-height: 1.1; }
 #resRankSub { font-size: 13px; color: var(--dim); }
 #resStats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; margin: 0; text-align: left; }
@@ -245,6 +261,7 @@ body.in-locker #lockerView { display: block; }
 <section id="hud" hidden>
   <div class="tl">
     <span class="life-bar" aria-label="体力"><i id="lifeFill"></i></span>
+    <span class="girl-life" id="girlLife" hidden aria-label="白石さんの体力"><b>♥</b><span class="life-bar"><i id="girlFill"></i></span></span>
     <div id="obj"></div>
   </div>
   <div class="phase sneak" id="phase"><b></b><span id="phaseT"></span></div>
@@ -313,7 +330,10 @@ body.in-locker #lockerView { display: block; }
 <section id="result" class="overlay" hidden>
   <div class="card">
     <span class="res-mode" id="resMode"></span>
-    <div class="res-rank"><span style="font-size:12px;color:var(--dim)">コードネーム</span><span id="resRank"></span><span id="resRankSub"></span></div>
+    <div class="res-top">
+      <div class="res-grade"><span class="res-cap">総合ランク</span><strong id="resGrade">A</strong></div>
+      <div class="res-rank"><span class="res-cap">コードネーム</span><span id="resRank"></span><span id="resRankSub"></span></div>
+    </div>
     <dl id="resStats"></dl>
     <div class="btns">
       <button type="button" class="btn primary" id="resRetry">もう一度</button>

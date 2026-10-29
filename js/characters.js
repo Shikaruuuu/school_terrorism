@@ -48,13 +48,39 @@
     return new THREE.Mesh(geoCache[key], VC);
   }
 
-  // よく使う形
+  // 角を丸めた箱：箱の頂点を、内側の箱から一定の半径だけ外へ押し出して作る
+  const rboxCache = {};
+  function roundedBox(w, h, d) {
+    const k = w + ',' + h + ',' + d;
+    if (rboxCache[k]) return rboxCache[k];
+    const r = Math.min(w, h, d) * 0.45;
+    const geo = new THREE.BoxGeometry(w, h, d, 5, 5, 5);
+    const pos = geo.attributes.position, nor = geo.attributes.normal;
+    const hx = w / 2 - r, hy = h / 2 - r, hz = d / 2 - r;
+    const v = new THREE.Vector3(), inner = new THREE.Vector3(), n = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      inner.set(clampN(v.x, hx), clampN(v.y, hy), clampN(v.z, hz));
+      n.subVectors(v, inner);
+      if (n.lengthSq() > 1e-12) {
+        n.normalize();
+        v.copy(inner).addScaledVector(n, r);
+        pos.setXYZ(i, v.x, v.y, v.z);
+        nor.setXYZ(i, n.x, n.y, n.z);
+      }
+    }
+    rboxCache[k] = geo;
+    return geo;
+  }
+  const clampN = (x, m) => Math.max(-m, Math.min(m, x));
+
+  // よく使う形（なめらかに見えるよう分割は細かめ）
   const G = {
-    sph: new THREE.SphereGeometry(1, 16, 12),
-    sphHi: new THREE.SphereGeometry(1, 20, 14),
-    cap: (r, l) => new THREE.CapsuleGeometry(r, l, 4, 10),
-    cyl: (rt, rb, h, open) => new THREE.CylinderGeometry(rt, rb, h, 16, 1, !!open),
-    box: (w, h, d) => new THREE.BoxGeometry(w, h, d),
+    sph: new THREE.SphereGeometry(1, 24, 16),
+    sphHi: new THREE.SphereGeometry(1, 28, 20),
+    cap: (r, l) => new THREE.CapsuleGeometry(r, l, 6, 14),
+    cyl: (rt, rb, h, open) => new THREE.CylinderGeometry(rt, rb, h, 24, 1, !!open),
+    box: roundedBox,
   };
 
   // ---------- 顔のテクスチャ ----------
@@ -234,10 +260,14 @@
     const torsoKey = 'torso|' + k + '|' + outer + '|' + (o.bow || '') + '|' + (o.backpack ? 1 : 0) + '|' + (o.boss ? 1 : 0);
     hips.add(cached(torsoKey, () => {
       const p = new P();
-      const prof = [[0.0, -0.06], [0.15, -0.05], [0.155, 0.02], [0.13, 0.12], [0.15, 0.24], [0.17, 0.34], [0.165, 0.42], [0.11, 0.48], [0.05, 0.5]].map(([r, y]) => new THREE.Vector2(r, y));
-      p.add(new THREE.LatheGeometry(prof, 18), top, [0, 0, 0], null, [1, 1, 0.66]);
-      p.add(G.cyl(0.045, 0.05, 0.12), k === 'terror' && !o.boss ? 0x1b1c1f : sk, [0, NECK - 0.02, 0.005]);
-      [-1, 1].forEach((s) => p.add(G.sph, top, [s * 0.165, SHOULDER, 0], null, [0.07, 0.065, 0.07]));
+      // 胴：腰のくびれ・胸・なで肩を、男女で少し変えた回転体で作る
+      const prof = (female
+        ? [[0.0, -0.07], [0.12, -0.065], [0.15, -0.03], [0.148, 0.03], [0.118, 0.12], [0.128, 0.2], [0.148, 0.28], [0.152, 0.35], [0.14, 0.41], [0.1, 0.47], [0.05, 0.5]]
+        : [[0.0, -0.07], [0.125, -0.065], [0.148, -0.03], [0.148, 0.04], [0.135, 0.12], [0.15, 0.22], [0.168, 0.32], [0.17, 0.39], [0.15, 0.44], [0.1, 0.485], [0.05, 0.5]]
+      ).map(([r, y]) => new THREE.Vector2(r, y));
+      p.add(new THREE.LatheGeometry(prof, 28), top, [0, 0, 0], null, [1, 1, 0.68]);
+      p.add(G.cap(0.042, 0.08), k === 'terror' && !o.boss ? 0x1b1c1f : sk, [0, NECK - 0.02, 0.005]);
+      [-1, 1].forEach((s) => p.add(G.sph, top, [s * (female ? 0.15 : 0.16), SHOULDER - 0.005, 0], null, [0.058, 0.055, 0.06]));
       if (k === 'boy' || k === 'girl') {
         // 白いシャツの襟元（Vの開きと襟）
         p.add(G.box(0.09, 0.13, 0.02), UNI.shirt, [0, 0.4, 0.098], [-0.12, 0, 0]);
@@ -282,7 +312,7 @@
       } else {
         // 戦闘服：ベスト、ポーチ、ベルト、肩ひも、銃
         const vest = o.boss ? 0x521616 : 0x2c2f23;
-        p.add(G.box(0.3, 0.3, 0.21), vest, [0, 0.27, 0]);
+        p.add(G.box(0.32, 0.32, 0.22), vest, [0, 0.27, 0]);
         [-0.09, 0, 0.09].forEach((xx) => p.add(G.box(0.07, 0.09, 0.05), 0x363a2b, [xx, 0.2, 0.12]));
         p.add(G.box(0.06, 0.08, 0.04), 0x363a2b, [0.08, 0.33, 0.12]);
         p.add(G.box(0.32, 0.045, 0.22), 0x1a1b17, [0, 0.0, 0]);
@@ -404,7 +434,7 @@
         p.add(G.cap(0.038, FORE - 0.08), sleeve, [0, -FORE / 2 + 0.01, 0]);
         if (k !== 'terror') p.add(G.cyl(0.036, 0.036, 0.02, true), UNI.shirt, [0, -FORE + 0.035, 0]); // シャツの袖口
         // 手のひら・指・親指
-        p.add(G.box(0.07, 0.085, 0.03), hand, [0, -FORE - 0.035, 0]);
+        p.add(G.sph, hand, [0, -FORE - 0.035, 0], null, [0.036, 0.045, 0.018]);
         for (let i = 0; i < 4; i++) p.add(G.cap(0.008, 0.04), hand, [-0.025 + i * 0.017, -FORE - 0.1, 0.004]);
         p.add(G.cap(0.009, 0.03), hand, [-s * 0.04, -FORE - 0.04, 0.012], [0, 0, s * 0.6]);
         return p;
@@ -418,7 +448,9 @@
       const hp = new THREE.Group();
       hp.position.set(s * 0.085, HIP, 0);
       body.add(hp);
-      hp.add(cached('thigh|' + k + '|' + sk, () => new P().add(G.cap(female ? 0.052 : 0.06, THIGH - 0.08), female ? sk : pants, [0, -THIGH / 2, 0])));
+      hp.add(cached('thigh|' + k + '|' + sk, () => new P()
+        .add(G.cap(female ? 0.056 : 0.062, THIGH - 0.1), female ? sk : pants, [0, -THIGH / 2 + 0.01, 0])
+        .add(G.sph, female ? sk : pants, [0, -0.02, 0], null, [0.066, 0.06, 0.066])));
       const kn = new THREE.Group();
       kn.position.y = -THIGH;
       hp.add(kn);
@@ -427,6 +459,7 @@
         if (female) {
           p.add(G.cap(0.044, SHIN - 0.2), sk, [0, -0.05, 0]);
           p.add(G.cap(0.046, SHIN - 0.12), UNI.socks, [0, -SHIN / 2 - 0.02, 0]); // 紺のハイソックス
+          p.add(G.sph, UNI.socks, [0, -0.13, -0.012], null, [0.05, 0.08, 0.05]);
         } else {
           p.add(G.cap(0.05, SHIN - 0.08), pants, [0, -SHIN / 2, 0]);
           if (k === 'terror') p.add(G.box(0.1, 0.09, 0.05), 0x222222, [0, -0.02, 0.045]); // ニーパッド
@@ -484,13 +517,29 @@
         armSet(p.aL, s * 0.45, 0.06, -0.25 - Math.max(0, s) * 0.3);
         armSet(p.aR, -s * 0.45, -0.06, -0.25 - Math.max(0, -s) * 0.3);
       }
+    } else if (mode === 'run') {
+      // 走り：前傾し、脚を大きく振って後ろ脚を蹴り上げ、腕はひじを曲げて振る
+      b.position.y = -0.03 - Math.abs(c) * 0.06;
+      p.hips.rotation.x = 0.3;
+      p.hips.rotation.y = s * 0.12;
+      p.head.rotation.x = -0.22;
+      legSet(p.lL, -s * 0.95, 0.25 + Math.max(0, s) * 1.5);
+      legSet(p.lR, s * 0.95, 0.25 + Math.max(0, -s) * 1.5);
+      if (terror) {
+        armSet(p.aL, -1.14, 0.58, -0.2);
+        armSet(p.aR, -0.3, -0.25, -1.3);
+      } else {
+        armSet(p.aL, s * 0.9, 0.1, -1.5);
+        armSet(p.aR, -s * 0.9, -0.1, -1.5);
+      }
     } else if (mode === 'crouch') {
-      b.position.y = -0.33;
-      p.hips.rotation.x = 0.35;
-      legSet(p.lL, -1.2 - s * 0.25, 1.3 + s * 0.2);
-      legSet(p.lR, -1.2 + s * 0.25, 1.3 - s * 0.2);
-      p.head.rotation.x = -0.3;
-      if (!terror) { armSet(p.aL, -0.5, 0.1, -0.8); armSet(p.aR, -0.5, -0.1, -0.8); }
+      // しゃがみ歩き：腰を落として前かがみ。太ももは斜め前、すねはほぼ垂直で足裏が床に付く
+      b.position.y = -0.28 - (moving ? Math.abs(c) * 0.015 : 0);
+      p.hips.rotation.x = 0.5;
+      p.head.rotation.x = -0.45;
+      legSet(p.lL, -0.75 - s * 0.32, 1.48 + Math.max(0, c) * 0.35);
+      legSet(p.lR, -0.75 + s * 0.32, 1.48 + Math.max(0, -c) * 0.35);
+      if (!terror) { armSet(p.aL, -0.55 + s * 0.15, 0.12, -0.7); armSet(p.aR, -0.55 - s * 0.15, -0.12, -0.7); }
     } else if (mode === 'sit') {
       // 体育座り（膝を抱える）
       b.position.y = -0.68;
