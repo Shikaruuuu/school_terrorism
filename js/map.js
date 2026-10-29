@@ -1,6 +1,8 @@
-// 学校にテロリスト — 校舎マップとモード設定
+// 〇〇にテロリスト — ステージ「学校」：校舎マップと、ステージ固有の設定（敵・白石さんの居場所・物語・人物）
 // 1セル = 1m。x が東西（右が東）、z が南北（下が南）。
+// ステージは TG.STAGES に登録する。共通のゲームルールは game.js 側にある。
 window.TG = window.TG || {};
+TG.STAGES = TG.STAGES || {};
 
 (function () {
   const W = 64, H = 46;
@@ -144,9 +146,17 @@ window.TG = window.TG || {};
     return { id: 'corr', name: '1階廊下' };
   }
 
-  TG.map = { W, H, T, F, grid, floor, rooms, lockers, get, solid, sight, low, roomAt };
+  // 平屋なので、ゲーム上の座標がそのまま3Dの座標になる
+  const map = {
+    W, H, T, F, grid, floor, rooms, lockers, get, solid, sight, low, roomAt,
+    floors: 1, portal: null, floorOf: () => 0, wx: (x) => x, wy: () => 0,
+    // カメラが越えてはいけない物（ロッカーや棚の上は越えてよい）
+    camWall: (x, z) => { const t = get(x, z); return t === T.WALL || t === T.TREE; },
+    radarColor: (t) => (t === T.WALL || t === T.LOCKER || t === T.SHELF ? '#8fe0b0' : t === T.TREE ? '#3f8a5c' : t === T.FENCE || t === T.GATE || t === T.BACKGATE ? '#5aa07a' : null),
+  };
+  TG.map = map; // world.js（学校の3D）が参照する
 
-  // ===================== モード設定 =====================
+  // ===================== ステージ設定 =====================
   const D = Math.PI / 180;
   const S = 0, N = 180 * D, E = 90 * D, Wd = -90 * D;
 
@@ -157,8 +167,6 @@ window.TG = window.TG || {};
     g1a: { room: '1a', route: [[11, 4, 3, Wd, E], [11, 11, 3, E, Wd]] },
     g2b: { room: '2b', route: [[33, 11, 3, Wd, E], [33, 4, 3, E, Wd]] },
     gmus: { room: 'music', route: [[43, 9, 4, N, Wd, E, S]] },
-    gmus2: { room: 'music', route: [[40, 11, 3, E], [46, 12, 3, N, Wd]] },
-    hold: { route: [] }, // 白石さんの見張り（ルートは居場所ごと）
     g3a: { room: '3a', route: [[55, 4, 3, Wd, E], [55, 11, 3, E, Wd]] },
     entr: { route: [[26, 25, 4, S, E, Wd], [27, 19, 3, N, E]] },
     staff: { room: 'staff', route: [[8, 19, 3, E, Wd], [9, 25, 3, Wd, E]] },
@@ -173,98 +181,99 @@ window.TG = window.TG || {};
   const C = (x, z) => ({ x: x + 0.5, z: z + 0.5 });
 
   // 人質（教室で座らされている生徒）
-  function hostageSpots(x0, n) {
-    const out = [];
-    const spots = [[2, 4], [2, 5], [2, 6], [2, 9], [2, 10], [2, 11], [4, 4], [6, 12]];
-    for (let i = 0; i < n; i++) out.push(C(x0 + spots[i][0], spots[i][1]));
-    return out;
-  }
+  const HOSTAGE_SPOTS = [[2, 4], [2, 5], [2, 6], [2, 9], [2, 10], [2, 11]];
+  const hostages = [];
+  [['1a', 5], ['2a', 16], ['2b', 27], ['3a', 49]].forEach(([, x0]) => {
+    HOSTAGE_SPOTS.forEach(([dx, z], i) => hostages.push({ ...C(x0 + dx, z), face: -Math.PI / 2 + (((i * 37) % 10) - 5) * 0.04, i: i + x0 }));
+  });
 
-  const commonItems = [
-    { type: 'chalk', ...C(6, 9), n: 3 },
-    { type: 'chalk', ...C(28, 9), n: 3 },
-    { type: 'chalk', ...C(51, 9), n: 3 },
-    { type: 'ext', ...C(6, 14) },
-    { type: 'ext', ...C(57, 16) },
-    { type: 'ext', ...C(55, 18) },
-    { type: 'med', ...C(19, 19) },
-    { type: 'med', ...C(9, 24) },
-    { type: 'med', ...C(60, 3) },
-    { type: 'box', ...C(9, 37) },
-    { type: 'tape', ...C(48, 24), n: 3 },
-  ];
+  const HERO = 'ユウト', GIRL = '白石さん';
 
-  TG.MODES = {
-    escape: {
-      id: 'escape',
-      kind: 'STORY 1',
-      name: '1人で脱出編',
-      hint: '誰にも見つからずに学校を抜け出し、警察へ駆け込め。',
-      goal: 'ゴール：裏門から脱出',
-      enemies: {
-        easy: ['g2a', 'corr', 'entr', 'yard', 'janitor'],
-        normal: ['g2a', 'corr', 'g2b', 'gmus', 'entr', 'yard', 'gate', 'east', 'janitor'],
-        hard: ['g2a', 'corr', 'g1a', 'g2b', 'gmus', 'g3a', 'entr', 'staff', 'yard', 'gate', 'back', 'east', 'janitor', 'boss'],
-      },
-      items: [...commonItems, { type: 'key', ...C(48, 22) }],
-      start: { inv: { chalk: 2 } },
-      hostages: { '1a': 6, '2a': 7, '2b': 6, '3a': 6, music: 0 },
+  TG.STAGES.school = {
+    id: 'school',
+    order: 1,
+    title: '学校にテロリスト',
+    place: '舞台：中学校',
+    desc: '5時間目の授業中、覆面の男たちが教室に。連れ去られた白石さんを見つけ出し、2人で学校を抜け出せ。',
+    goal: 'ゴール：白石さんと裏門から脱出',
+    map,
+    buildWorld: (group) => {
+      const r = TG.world.build(group);
+      r.onExit = () => { r.backGate.visible = false; };
+      r.reset = () => { r.backGate.visible = true; };
+      return r;
     },
-    rescue: {
-      id: 'rescue',
-      kind: 'STORY 2',
-      name: '好きな子を救え',
-      hint: 'どこかに連れ去られた白石さんを見つけ出し、2人で学校を抜け出せ。',
-      goal: 'ゴール：白石さんと裏門から脱出',
-      enemies: {
-        // hold は白石さんの見張り。居場所に合わせて配置が決まる
-        easy: ['g2a', 'corr', 'hold', 'entr', 'yard', 'janitor'],
-        normal: ['g2a', 'corr', 'g2b', 'gmus', 'hold', 'entr', 'yard', 'gate', 'east', 'janitor'],
-        hard: ['g2a', 'corr', 'g1a', 'g2b', 'gmus', 'hold', 'g3a', 'entr', 'staff', 'yard', 'gate', 'back', 'east', 'janitor', 'boss'],
-      },
-      items: [...commonItems, { type: 'key', ...C(48, 22) }, { type: 'stun', ...C(10, 19) }],
-      start: { inv: { chalk: 2 } },
-      hostages: { '1a': 6, '2a': 6, '2b': 6, '3a': 6, music: 0 },
-      // 白石さんの居場所の候補。開始ごとにどれか1つ。
-      // riddle はオープニングで覆面の男が言う一言、hint は目的の欄に出る手がかり、
-      // charm は居場所に近い廊下・通り道に落ちているキーホルダー（拾うと居場所が分かる）
-      girlSpots: [
-        { id: 'music', room: 'music', pos: C(46, 6), face: Math.PI, hint: 'ピアノのある部屋？', riddle: 'ピアノのある部屋にでも閉じ込めておけ。',
-          charm: C(45, 15), guard: [[40, 11, 3, E], [46, 12, 3, N, Wd]] },
-        { id: 'infirm', room: 'infirm', pos: C(19, 23), face: -Math.PI / 2, hint: 'ベッドのある部屋？', riddle: 'ベッドのある部屋に寝かせておけ。',
-          charm: C(17, 15), guard: [[18, 19, 4, S, E], [20, 24, 3, N, Wd]] },
-        { id: 'lab', room: 'lab', pos: C(54, 22), face: Math.PI, hint: '薬品くさい部屋？', riddle: '薬品くさい部屋の実験台にでも縛っておけ。',
-          charm: C(54, 15), guard: [[55, 19, 4, S, Wd], [54, 25, 3, N, E]] },
-        { id: 'shed', room: 'shed', pos: C(9, 35), face: Math.PI / 2, hint: '校舎の外の倉庫？', riddle: '校舎の外の倉庫に放り込んでおけ。',
-          charm: C(17, 33), guard: [[10, 33, 4, S, E], [12, 35, 3, Wd, N]] },
+    sky: 0x9fb4c4,
+    par: 420,
+    titleCam: { x: 32, z: 22, r: 34, h: 26 },
+    // カメラの高さの上限（屋内は天井の少し下）
+    camTop: (x, z) => ((x >= 4 && x <= 60 && z >= 3 && z <= 28) || (x >= 5 && x <= 15 && z >= 31 && z <= 40) ? 2.62 : 3.6),
+    enemies: ENEMIES,
+    // hold は白石さんの見張り。居場所に合わせて配置が決まる
+    lists: {
+      easy: ['g2a', 'corr', 'hold', 'entr', 'yard', 'janitor'],
+      normal: ['g2a', 'corr', 'g2b', 'gmus', 'hold', 'entr', 'yard', 'gate', 'east', 'janitor'],
+      hard: ['g2a', 'corr', 'g1a', 'g2b', 'gmus', 'hold', 'g3a', 'entr', 'staff', 'yard', 'gate', 'back', 'east', 'janitor', 'boss'],
+    },
+    start: { locker: { x: 25, z: 4 } },
+    startRoom: '2a',
+    leave: { text: '教室から出ろ', pos: { x: 24, z: 14.2 }, label: '出口' },
+    key: { ...C(48, 22), text: '裏門の鍵を探せ', label: '鍵' },
+    exits: [{ x: 62.5, z: 37.5, label: '裏門' }],
+    exitText: GIRL + 'と裏門へ',
+    hostages,
+    // 白石さんの居場所の候補。開始ごとにどれか1つ。
+    // riddle はオープニングで覆面の男が言う一言、hint は目的の欄に出る手がかり、
+    // charm は居場所に近い廊下・通り道に落ちているキーホルダー（拾うと居場所が分かる）
+    girlSpots: [
+      { id: 'music', room: 'music', pos: C(46, 6), face: Math.PI, hint: 'ピアノのある部屋？', riddle: 'ピアノのある部屋にでも閉じ込めておけ。',
+        charm: C(45, 15), guard: [[40, 11, 3, E], [46, 12, 3, N, Wd]] },
+      { id: 'infirm', room: 'infirm', pos: C(19, 23), face: -Math.PI / 2, hint: 'ベッドのある部屋？', riddle: 'ベッドのある部屋に寝かせておけ。',
+        charm: C(17, 15), guard: [[18, 19, 4, S, E], [20, 24, 3, N, Wd]] },
+      { id: 'lab', room: 'lab', pos: C(54, 22), face: Math.PI, hint: '薬品くさい部屋？', riddle: '薬品くさい部屋の実験台にでも縛っておけ。',
+        charm: C(54, 15), guard: [[55, 19, 4, S, Wd], [54, 25, 3, N, E]] },
+      { id: 'shed', room: 'shed', pos: C(9, 35), face: Math.PI / 2, hint: '校舎の外の倉庫？', riddle: '校舎の外の倉庫に放り込んでおけ。',
+        charm: C(17, 33), guard: [[10, 33, 4, S, E], [12, 35, 3, Wd, N]] },
+    ],
+    names: { hero: HERO, girl: GIRL },
+    chars: { player: () => TG.models.player(), girl: () => TG.models.girl(), mob: (i) => TG.models.student(i) },
+    clueItem: 'charm',
+    texts: { find: GIRL + 'を探せ：', rescue: GIRL + 'を助けろ', girlLabel: GIRL },
+    over: { dead: HERO + '？ ' + HERO + '！？ ' + HERO + 'ーーーーッ！！', girl: GIRL + '！？ ' + GIRL + 'ーーーん！！' },
+    ranks: { ghost: '伝説の帰宅部', fox: '気配を消せる男', hound: '校内の猟犬', dog: 'あばれる中学2年生', chicken: 'ただの迷惑な生徒' },
+    story: {
+      opening: [
+        { t: '――5時間目。数学の授業。' },
+        { w: '先生', t: 'じゃあ、この二次方程式を……そうだな、' + HERO + '。' },
+        { t: 'ぼんやり窓の外を眺めながら、僕はいつもの妄想をしていた。' },
+        { t: '「もし今、この教室にテロリストが入ってきたら――」' },
+        { t: 'ガラッ！！！', fx: 'shake' },
+        { w: '覆面の男', t: '全員動くな！！ この学校は我々が占拠した！' },
+        { t: '悲鳴。倒れる椅子。誰かの筆箱が床に散らばる。' },
+        { t: '……嘘だろ。妄想が、現実になった。' },
+        { t: '混乱のすきに、僕は教室の一番後ろ、掃除用具ロッカーへ滑り込んだ。' },
+        { w: '覆面の男', t: 'おい、そこの女。こっちに来い。' },
+        { w: GIRL, t: 'や……やだ……っ！' },
+        { t: '白石美月さん。クラスで、いや、学校でいちばん……僕がずっと好きだった人。' },
+        { w: '覆面の男', riddle: true },
+        { t: '……今、動けるのは僕だけだ。' },
+        { t: GIRL + 'を助け出して、2人でここから抜け出す。絶対に。' },
       ],
-    },
-    suppress: {
-      id: 'suppress',
-      kind: 'STORY 3',
-      name: 'テロリストを倒せ',
-      hint: '1人ずつ倒して武器を奪い、仲間を解放して、学校を取り戻せ。',
-      goal: 'ゴール：テロリスト全員を鎮圧',
-      enemies: {
-        easy: ['g2a', 'corr', 'gmus', 'entr', 'yard', 'boss'],
-        normal: ['g2a', 'corr', 'g1a', 'gmus', 'g3a', 'entr', 'yard', 'janitor', 'boss'],
-        hard: ['g2a', 'corr', 'g1a', 'g2b', 'gmus', 'g3a', 'entr', 'staff', 'yard', 'gate', 'back', 'janitor', 'boss'],
-      },
-      items: [...commonItems, { type: 'tape', ...C(10, 25), n: 5 }],
-      start: { inv: { chalk: 2, tape: 3 } },
-      hostages: { '1a': 6, '2a': 7, '2b': 6, '3a': 6, music: 4 },
+      ending: [
+        { t: '裏門の外。パトカーの赤い光の中で、僕たちはやっと足を止めた。' },
+        { w: GIRL, t: '……ありがとう。ずっと、怖かった。' },
+        { w: GIRL, t: '来てくれるって、なんとなく思ってた。……なんでだろうね。' },
+        { w: HERO, t: 'あ、あのさ、白石さん。俺、ずっと――' },
+        { w: '警察官', t: '君たち！ 無事か！！' },
+        { t: '……続きは、また今度。' },
+      ],
     },
   };
 
-  // 難易度：敵の人数（モードごと）に加えて、視界の広さと受けるダメージを変える
-  TG.DIFFS = {
+  // 難易度：敵の人数（ステージごと）に加えて、視界の広さと受けるダメージを変える
+  TG.DIFFS = TG.DIFFS || {
     easy: { name: 'かんたん', sight: 0.75, dmg: 0.5 },
     normal: { name: 'ふつう', sight: 0.9, dmg: 0.75 },
     hard: { name: 'むずかしい', sight: 1, dmg: 1 },
   };
-  TG.ENEMIES = ENEMIES;
-  TG.hostageSpots = hostageSpots;
-  TG.cellCenter = C;
-  TG.PLAYER_START = { locker: { x: 25, z: 4 }, x: 24.5, z: 4.5 };
-  TG.BACKGATE = { x: 62.5, z: 37.5 };
 })();

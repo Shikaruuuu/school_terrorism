@@ -1,6 +1,8 @@
-// 学校にテロリスト — ゲーム本体
+// 〇〇にテロリスト — ゲーム本体（全ステージ共通のルール）
+// ステージ固有のマップ・敵・物語・人物は TG.STAGES（map.js＝学校、mall.js＝ショッピングモール）にある。
 (function () {
-  const M = TG.map, MD = TG.models, AU = TG.audio;
+  const MD = TG.models, AU = TG.audio;
+  let S = null, M = null; // 遊んでいるステージと、そのマップ
   const $ = (id) => document.getElementById(id);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -15,70 +17,6 @@
   const E_SPEED = { walk: 1.7, inv: 2.1, run: 3.7, search: 2.4 };
   const ALERT_TIME = 14, EVASION_TIME = 16;
   const SIGHT_RANGE = 9, SIGHT_FOV = 50 * Math.PI / 180, ALERT_FOV = 68 * Math.PI / 180;
-  const NAME = 'ユウト';
-
-  // ===================== ストーリー =====================
-  const OPENING = [
-    { t: '――5時間目。数学の授業。' },
-    { w: '先生', t: 'じゃあ、この二次方程式を……そうだな、' + NAME + '。' },
-    { t: 'ぼんやり窓の外を眺めながら、僕はいつもの妄想をしていた。' },
-    { t: '「もし今、この教室にテロリストが入ってきたら――」' },
-    { t: 'ガラッ！！！', fx: 'shake' },
-    { w: '覆面の男', t: '全員動くな！！ この学校は我々が占拠した！' },
-    { t: '悲鳴。倒れる椅子。誰かの筆箱が床に散らばる。' },
-    { t: '……嘘だろ。妄想が、現実になった。' },
-    { t: '混乱のすきに、僕は教室の一番後ろ、掃除用具ロッカーへ滑り込んだ。' },
-  ];
-  const STORY = {
-    escape: {
-      intro: [
-        { t: 'ロッカーの隙間から、廊下を行き来する覆面の男たちが見える。……何人いるんだ。' },
-        { t: '正門の外では、もうパトカーのサイレンが鳴っている。でも正門は鎖で封鎖されていた。' },
-        { t: '……裏門だ。用務員室に、裏門の鍵があったはず。' },
-        { t: '誰にも見つからずに学校を抜け出して、警察に中の様子を伝えるんだ。' },
-      ],
-      ending: [
-        { t: '裏門を抜けた瞬間、膝が笑った。それでも走った。' },
-        { w: '警察官', t: '君、中の生徒か！？ ケガは！？' },
-        { w: NAME, t: '敵は十数人。正門、昇降口、廊下にそれぞれ見張り。リーダーは放送室にいます！' },
-        { t: '僕の情報をもとに機動隊が突入し、事件はわずか20分で解決した。' },
-        { t: '翌日から、僕は「伝説の帰宅部」と呼ばれるようになった。' },
-      ],
-    },
-    rescue: {
-      intro: [
-        { w: '覆面の男', t: 'おい、そこの女。こっちに来い。' },
-        { w: '白石さん', t: 'や……やだ……っ！' },
-        { t: '白石美月さん。クラスで、いや、学校でいちばん……僕がずっと好きだった人。' },
-        { w: '覆面の男', t: '{RIDDLE}', riddle: true },
-        { t: '……今、動けるのは僕だけだ。' },
-        { t: '白石さんを助け出して、2人でここから抜け出す。絶対に。' },
-      ],
-      ending: [
-        { t: '裏門の外。パトカーの赤い光の中で、僕たちはやっと足を止めた。' },
-        { w: '白石さん', t: '……ありがとう。ずっと、怖かった。' },
-        { w: '白石さん', t: '来てくれるって、なんとなく思ってた。……なんでだろうね。' },
-        { w: NAME, t: 'あ、あのさ、白石さん。俺、ずっと――' },
-        { w: '警察官', t: '君たち！ 無事か！！' },
-        { t: '……続きは、また今度。' },
-      ],
-    },
-    suppress: {
-      intro: [
-        { t: '……逃げるか？ いや。' },
-        { t: '何百回も妄想してきた。この日のために。' },
-        { t: '奴らを1人ずつ倒して、武器を奪って、捕まったみんなを助ける。' },
-        { t: 'そして――この学校を取り戻す。' },
-      ],
-      ending: [
-        { t: '最後のテロリストを縛り上げた。' },
-        { t: '放送室のマイクのスイッチを入れる。' },
-        { w: NAME, t: '……こちら2年A組。学校は、取り戻しました。' },
-        { t: '校舎のあちこちから、歓声が上がった。' },
-        { t: '妄想は、ほんの少しだけ現実を超えた。' },
-      ],
-    },
-  };
 
   // ===================== レンダラ =====================
   const canvas = $('view');
@@ -93,7 +31,9 @@
   const sun = new THREE.DirectionalLight(0xfff0d8, 0.75);
   sun.position.set(18, 40, 26);
   scene.add(sun);
-  const worldRefs = TG.world.build(scene);
+  // ステージの3D。作るのは最初に遊ぶときの1回だけで、切り替えは表示・非表示で行う
+  const stageWorld = {};
+  let worldRefs = null;
   let dyn = new THREE.Group();
   scene.add(dyn);
 
@@ -126,6 +66,33 @@
   function moveBy(e, dx, dz, r) {
     if (!collides(e.x + dx, e.z, r)) e.x += dx;
     if (!collides(e.x, e.z + dz, r)) e.z += dz;
+    // 階段の端まで来たら、上下の階の同じ位置へ移る（主人公・敵・女の子すべて）
+    if (M.portal) {
+      const cx = Math.floor(e.x), cz = Math.floor(e.z), to = M.portal[cz * M.W + cx];
+      if (to >= 0) { e.x += (to % M.W) - cx; e.z += ((to / M.W) | 0) - cz; }
+    }
+  }
+  const floorOf = (o) => M.floorOf(o.x);
+  const sameFloor = (a, b) => M.floorOf(a.x) === M.floorOf(b.x);
+  // ゲーム上の座標 → 3Dの座標
+  function place(obj, x, z, y) { obj.position.set(M.wx(x), M.wy(x, z) + (y || 0), z); }
+
+  function loadStage(id) {
+    if (S && S.id === id) return;
+    S = TG.STAGES[id];
+    M = S.map;
+    for (const k in stageWorld) stageWorld[k].group.visible = false;
+    if (!stageWorld[id]) {
+      const group = new THREE.Group();
+      scene.add(group);
+      stageWorld[id] = { group, refs: S.buildWorld(group) };
+    }
+    stageWorld[id].group.visible = true;
+    worldRefs = stageWorld[id].refs;
+    scene.background.setHex(S.sky);
+    scene.fog.color.setHex(S.sky);
+    allocPath();
+    drawMap();
   }
   function los(x0, z0, x1, z1, lowBlocks) {
     const dx = x1 - x0, dz = z1 - z0, d = Math.hypot(dx, dz);
@@ -145,9 +112,16 @@
   }
 
   // A*（8方向、角のすり抜けなし）
-  const NW = M.W, NH = M.H, NN = NW * NH;
-  const gS = new Float32Array(NN), came = new Int32Array(NN), stamp = new Uint32Array(NN), closed = new Uint32Array(NN);
+  // 2階建てのマップでは、階段の端の「ポータル」のマスに入ると上下の階の同じ位置へつながる
+  let NW = 0, gS, came, via, stamp, closed;
   let curStamp = 0;
+  function allocPath() {
+    NW = M.W;
+    const NN = M.W * M.H;
+    gS = new Float32Array(NN); came = new Int32Array(NN); via = new Int32Array(NN);
+    stamp = new Uint32Array(NN); closed = new Uint32Array(NN);
+    curStamp = 0;
+  }
   const DIRS = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414]];
   function nearestFree(x, z) {
     if (!M.solid(x, z)) return [x, z];
@@ -163,9 +137,14 @@
     const t = nearestFree(Math.floor(tx), Math.floor(tz));
     if (!s || !t) return null;
     curStamp++;
-    const si = s[1] * NW + s[0], ti = t[1] * NW + t[0];
+    const PT = M.portal;
+    const si = s[1] * NW + s[0];
+    let ti = t[1] * NW + t[0];
+    if (PT && PT[ti] >= 0) ti = PT[ti];
+    // 見積もりは3D上の距離（ポータルを通っても見た目の位置は変わらないので、遠回りを見積もりすぎない）
+    const tX = M.wx(ti % NW), tZ = (ti / NW) | 0;
     const heap = [];
-    const h = (i) => { const x = i % NW, z = (i / NW) | 0; const dx = Math.abs(x - t[0]), dz = Math.abs(z - t[1]); return Math.max(dx, dz) + 0.414 * Math.min(dx, dz); };
+    const h = (i) => { const dx = Math.abs(M.wx(i % NW) - tX), dz = Math.abs(((i / NW) | 0) - tZ); return Math.max(dx, dz) + 0.414 * Math.min(dx, dz); };
     const push = (i, f) => {
       heap.push([f, i]);
       let k = heap.length - 1;
@@ -187,10 +166,10 @@
       }
       return top;
     };
-    stamp[si] = curStamp; gS[si] = 0; came[si] = -1;
+    stamp[si] = curStamp; gS[si] = 0; came[si] = -1; via[si] = -1;
     push(si, h(si));
     let found = false, iter = 0;
-    while (heap.length && iter++ < 4000) {
+    while (heap.length && iter++ < 30000) {
       const [, i] = pop();
       if (closed[i] === curStamp) continue;
       closed[i] = curStamp;
@@ -200,18 +179,23 @@
         const nx = x + dx, nz = z + dz;
         if (M.solid(nx, nz)) continue;
         if (dx && dz && (M.solid(x + dx, z) || M.solid(x, z + dz))) continue;
-        const ni = nz * NW + nx;
+        let ni = nz * NW + nx, pi = -1;
+        if (PT && PT[ni] >= 0) { pi = ni; ni = PT[ni]; }
         if (closed[ni] === curStamp) continue;
         const g = gS[i] + c;
         if (stamp[ni] !== curStamp || g < gS[ni]) {
-          stamp[ni] = curStamp; gS[ni] = g; came[ni] = i;
+          stamp[ni] = curStamp; gS[ni] = g; came[ni] = i; via[ni] = pi;
           push(ni, g + h(ni));
         }
       }
     }
     if (!found) return null;
     const out = [];
-    for (let i = ti; i !== si && i !== -1; i = came[i]) out.push({ x: (i % NW) + 0.5, z: ((i / NW) | 0) + 0.5 });
+    for (let i = ti; i !== si && i !== -1; i = came[i]) {
+      out.push({ x: (i % NW) + 0.5, z: ((i / NW) | 0) + 0.5 });
+      // 階を移る直前のマス（ここに入ると上下の階へ移る）
+      if (via[i] >= 0) out.push({ x: (via[i] % NW) + 0.5, z: ((via[i] / NW) | 0) + 0.5, portal: true });
+    }
     out.reverse();
     return out;
   }
@@ -221,34 +205,34 @@
   let P = null; // プレイヤー
   let screen = 'title';
 
-  // 白石さんの居場所。同じプレイ（コンティニュー・最初から）では変えず、新しく始めるたびに選び直す
-  let lastSpot = -1;
-  function chooseGirlSpot(cfg, keep) {
-    const n = cfg.girlSpots.length;
-    if (!keep || lastSpot < 0) {
+  // 女の子の居場所。同じプレイ（コンティニュー・最初から）では変えず、新しく始めるたびに選び直す
+  const lastSpot = {};
+  function chooseGirlSpot(keep) {
+    const n = S.girlSpots.length, prev = lastSpot[S.id] === undefined ? -1 : lastSpot[S.id];
+    if (!keep || prev < 0) {
       let i = Math.floor(Math.random() * n);
-      if (n > 1 && i === lastSpot) i = (i + 1 + Math.floor(Math.random() * (n - 1))) % n;
-      lastSpot = i;
+      if (n > 1 && i === prev) i = (i + 1 + Math.floor(Math.random() * (n - 1))) % n;
+      lastSpot[S.id] = i;
     }
-    return cfg.girlSpots[lastSpot];
+    return S.girlSpots[lastSpot[S.id]];
   }
 
-  function newGame(modeId, diff, keepSpot) {
+  function newGame(stageId, diff, keepSpot) {
+    loadStage(stageId);
     scene.remove(dyn);
     dyn = new THREE.Group();
     scene.add(dyn);
-    const cfg = TG.MODES[modeId];
-    const spot = cfg.girlSpots ? chooseGirlSpot(cfg, keepSpot) : null;
+    const spot = chooseGirlSpot(keepSpot);
     G = {
       spot, clueFound: false,
-      mode: modeId, cfg, diff, D: TG.DIFFS[diff], time: 0, phase: 'sneak', alertT: 0, evaT: 0, lastKnown: null,
+      stage: stageId, diff, D: TG.DIFFS[diff], time: 0, phase: 'sneak', alertT: 0, evaT: 0, lastKnown: null,
       stats: { alerts: 0, downs: 0, ties: 0, freed: 0, damage: 0 },
       enemies: [], items: [], hostages: [], followers: [], fx: [], noises: [],
       girl: null, girlFreed: false, freedRooms: new Set(), anySee: false, objKey: '', gateMsgT: 0,
       hint: { left: false, cqc: false, seen: false }, cleared: false, flags: {},
     };
     // プレイヤー（少し透かして、向こう側も見えるようにする）
-    const pm = MD.player();
+    const pm = S.chars.player();
     pm.group.traverse((m) => {
       if (!m.isMesh || m.geometry.type === 'CircleGeometry') return;
       m.material = m.material.clone();
@@ -262,17 +246,18 @@
     dyn.add(pm.group);
     P = {
       model: pm, camDist: 2.4, camOver: 0,
-      x: TG.PLAYER_START.x, z: TG.PLAYER_START.z, a: Math.PI / 2, camA: Math.PI / 2, pitch: 0, eye: 1.45, bobT: 0, hp: 100, crouch: false, hidden: null,
+      x: 0, z: 0, a: Math.PI / 2, camA: Math.PI / 2, pitch: 0, eye: 1.45, bobT: 0, hp: 100, crouch: false, hidden: null,
       inv: { key: 0 },
       moving: false, running: false, actT: 0, noiseT: 0, regenT: 0, trail: [], stepT: 0, hurtT: 0,
     };
     // 開始時はロッカーの中
-    const L0 = M.lockers.find((l) => l.x === TG.PLAYER_START.locker.x && l.z === TG.PLAYER_START.locker.z);
+    const L0 = M.lockers.find((l) => l.x === S.start.locker.x && l.z === S.start.locker.z);
+    P.x = L0.x + 0.5 + Math.sin(L0.face); P.z = L0.z + 0.5 + Math.cos(L0.face);
     enterLocker(L0, true);
 
     // 敵
-    cfg.enemies[diff].forEach((id) => {
-      const def = id === 'hold' ? { room: spot.room, route: spot.guard } : TG.ENEMIES[id];
+    S.lists[diff].forEach((id) => {
+      const def = id === 'hold' ? { room: spot.room, route: spot.guard } : S.enemies[id];
       const route = def.route.map((r) => ({ x: r[0] + 0.5, z: r[1] + 0.5, wait: r[2] || 0, looks: r.slice(3) }));
       const model = MD.terrorist(!!def.boss);
       dyn.add(model.group);
@@ -290,42 +275,37 @@
       G.enemies.push(e);
     });
 
-    // 拾える物は裏門の鍵だけ（近づくと自動で拾う）
-    cfg.items.filter((it) => it.type === 'key').forEach((it) => spawnItem(it.type, it.x, it.z, it.n));
-    // 手がかり：白石さんのキーホルダーが、居場所の近くの通り道に落ちている
-    if (spot) spawnItem('charm', spot.charm.x, spot.charm.z);
+    // 拾える物は鍵（ステージにあれば）と、女の子の居場所の手がかりだけ（近づくと自動で拾う）
+    if (S.key) spawnItem('key', S.key.x, S.key.z);
+    spawnItem(S.clueItem, spot.charm.x, spot.charm.z);
 
     // 人質
-    Object.entries(cfg.hostages).forEach(([roomId, n]) => {
-      const r = M.rooms.find((q) => q.id === roomId);
-      if (!r || !n) return;
-      TG.hostageSpots(r.x0, n).forEach((p, i) => {
-        const m = MD.student(i + r.x0);
-        m.group.position.set(p.x, 0, p.z);
-        m.group.rotation.y = -Math.PI / 2 + (Math.random() - 0.5) * 0.4;
-        MD.pose(m, 'sit', false, 0);
-        dyn.add(m.group);
-        G.hostages.push({ x: p.x, z: p.z, room: roomId, model: m, freed: false });
-      });
+    S.hostages.forEach((h) => {
+      const m = S.chars.mob(h.i);
+      place(m.group, h.x, h.z);
+      m.group.rotation.y = h.face;
+      MD.pose(m, 'sit', false, 0);
+      dyn.add(m.group);
+      G.hostages.push({ x: h.x, z: h.z, model: m });
     });
 
-    // 白石さん
-    if (spot) {
-      const m = MD.girl();
-      m.group.position.set(spot.pos.x, 0, spot.pos.z);
+    // 助ける女の子
+    {
+      const m = S.chars.girl();
+      place(m.group, spot.pos.x, spot.pos.z);
       m.group.rotation.y = spot.face;
       MD.pose(m, 'sit', false, 0);
       dyn.add(m.group);
       // ハートは壁越しには見えない（近づくか、キーホルダーを拾うまでは探す）
       const heart = MD.label('♥', '#ff7aa8', 72, 0.7);
       heart.material.depthTest = true;
-      heart.position.set(spot.pos.x, 1.6, spot.pos.z);
+      place(heart, spot.pos.x, spot.pos.z, 1.6);
       heart.visible = false;
       dyn.add(heart);
       G.girl = { x: spot.pos.x, z: spot.pos.z, a: spot.face, model: m, heart, freed: false, crouch: false, moving: false, kind: 'girl', hp: 100, regenT: 0, hurtT: 0, speedNow: 0 };
     }
 
-    worldRefs.backGate.visible = true;
+    if (worldRefs.reset) worldRefs.reset();
     // 目的地のビーコン
     beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 2.6, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0xffd34d, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide }));
     beacon.position.y = 1.3;
@@ -339,13 +319,13 @@
 
   function spawnItem(type, x, z, n) {
     const m = MD.item(type);
-    m.position.set(x, 0.05, z);
+    place(m, x, z, 0.05);
     dyn.add(m);
-    const glow = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.36, 24), new THREE.MeshBasicMaterial({ color: type === 'key' ? 0xffd34d : type === 'charm' ? 0xff8fb6 : 0x9ff0ff, transparent: true, opacity: 0.7, depthWrite: false }));
+    const glow = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.36, 24), new THREE.MeshBasicMaterial({ color: type === 'key' ? 0xffd34d : 0xff8fb6, transparent: true, opacity: 0.7, depthWrite: false }));
     glow.rotation.x = -Math.PI / 2;
-    glow.position.set(x, 0.04, z);
+    place(glow, x, z, 0.04);
     dyn.add(glow);
-    G.items.push({ type, x, z, n: n || 1, model: m, glow, taken: false });
+    G.items.push({ type, x, z, n: n || 1, model: m, glow, base: M.wy(x, z), taken: false });
   }
 
   // ===================== 視界の扇形 =====================
@@ -372,7 +352,8 @@
     if (!active) return;
     const pos = e.cone.geometry.attributes.position.array;
     const range = enemyRange(e), fov = enemyFov(e);
-    pos[0] = e.x; pos[1] = 0.05; pos[2] = e.z;
+    const ox = M.wx(e.x) - e.x, oy = M.wy(e.x, e.z) + 0.05;
+    pos[0] = e.x + ox; pos[1] = oy; pos[2] = e.z;
     for (let i = 0; i <= CONE_RAYS; i++) {
       const ang = e.a - fov + (2 * fov * i) / CONE_RAYS;
       const dx = Math.sin(ang), dz = Math.cos(ang);
@@ -384,7 +365,7 @@
       }
       d = Math.min(d, range);
       const k = (i + 1) * 3;
-      pos[k] = e.x + dx * d; pos[k + 1] = 0.05; pos[k + 2] = e.z + dz * d;
+      pos[k] = e.x + ox + dx * d; pos[k + 1] = oy; pos[k + 2] = e.z + dz * d;
     }
     e.cone.geometry.attributes.position.needsUpdate = true;
     const c = e.state === 'alert' ? 0xff3b30 : (e.state === 'investigate' || e.susp > 0.25 ? 0xffa53a : 0xfff27a);
@@ -401,12 +382,12 @@
   function noiseRing(x, z, r) {
     const m = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false }));
     m.rotation.x = -Math.PI / 2;
-    m.position.set(x, 0.08, z);
+    place(m, x, z, 0.08);
     dyn.add(m);
     G.fx.push({ m, t: 0, life: 0.6, kind: 'ring', r });
   }
   function tracer(x0, z0, x1, z1, color) {
-    const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x0, 1.2, z0), new THREE.Vector3(x1, 1.1, z1)]);
+    const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(M.wx(x0), M.wy(x0, z0) + 1.2, z0), new THREE.Vector3(M.wx(x1), M.wy(x1, z1) + 1.1, z1)]);
     const m = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: color || 0xfff3a0, transparent: true }));
     dyn.add(m);
     G.fx.push({ m, t: 0, life: 0.12, kind: 'line' });
@@ -440,6 +421,7 @@
     e.pathI = 0;
     e.goal = { x, z };
     e.stuckT = 0;
+    e.replan = 0;
   }
   function turnTo(e, target, maxStep) {
     const d = angDiff(e.a, target);
@@ -450,6 +432,16 @@
     while (e.pathI < e.path.length) {
       const last = e.pathI === e.path.length - 1;
       const p = last ? e.goal : e.path[e.pathI];
+      if (!sameFloor(p, e)) {
+        // 階を移ったあとは、前の階に残った経路の点を飛ばす。
+        // 目的地が別の階なのに経路が尽きたら（引っかかって飛ばしたときなど）、引き直す
+        if (!last) { e.pathI++; continue; }
+        if (e.replan++ > 1) { e.path = null; return true; }
+        e.path = findPath(e.x, e.z, p.x, p.z);
+        e.pathI = 0;
+        if (!e.path) return true;
+        continue;
+      }
       const dx = p.x - e.x, dz = p.z - e.z, d = Math.hypot(dx, dz);
       if (d < (last ? 0.15 : 0.35)) { e.pathI++; continue; }
       const st = Math.min(d, speed * dt);
@@ -548,15 +540,6 @@
     G.stats.downs++;
     AU.sfx.takedown();
     makeNoise(e.x, e.z, 2.2, 'thud');
-    if (G.mode === 'suppress') tieUp(e);
-  }
-
-  function tieUp(e) {
-    e.state = 'tied';
-    e.downT = 0;
-    e.mark.visible = false;
-    G.stats.ties++;
-    AU.sfx.pickup();
   }
 
   function enemyShoot(e, target) {
@@ -587,7 +570,7 @@
     if (P.hp <= 0) { P.hp = 0; gameOver('dead'); }
   }
 
-  // 白石さんのダメージ（主人公と同じく、難易度で軽くなる）
+  // 女の子のダメージ（主人公と同じく、難易度で軽くなる）
   function damageGirl(n) {
     const g = G.girl;
     if (!g || !G.girlFreed || G.cleared || screen !== 'play') return;
@@ -618,7 +601,7 @@
     let target = null, best = 0;
     const vp = sees(e, P.x, P.z, playerVisMul(), P.crouch);
     if (vp > 0) { target = P; best = vp; }
-    // 主人公が見えているときは主人公を優先（白石さんばかり狙われないように）
+    // 主人公が見えているときは主人公を優先（女の子ばかり狙われないように）
     if (!target) {
       for (const f of G.followers) {
         const v = sees(e, f.x, f.z, f.crouch ? 0.5 : 0.85, f.crouch);
@@ -816,41 +799,25 @@
     AU.sfx.free();
     G.stats.freed++;
   }
-  function freeRoom(roomId) {
-    const list = G.hostages.filter((h) => h.room === roomId && !h.freed);
-    list.forEach((h) => {
-      h.freed = true;
-      G.stats.freed++;
-      if (G.followers.length < 8) {
-        G.followers.push({ x: h.x, z: h.z, a: 0, model: h.model, crouch: false, moving: false, kind: 'ally', atkT: Math.random(), tieT: 0 });
-      } else {
-        h.model.group.visible = false;
-      }
-    });
-    G.freedRooms.add(roomId);
-    AU.sfx.free();
-  }
-  // 近づくだけで起きること（鍵を拾う、白石さんを助ける、仲間の解放、裏門）
+  // 近づくだけで起きること（鍵・手がかりを拾う、女の子を助ける、出口）
   function autoInteract() {
     for (const it of G.items) {
       if (it.taken || Math.hypot(it.x - P.x, it.z - P.z) > 0.9) continue;
       it.taken = true;
       dyn.remove(it.model); dyn.remove(it.glow);
       if (it.type === 'key') P.inv.key = 1;
-      if (it.type === 'charm') G.clueFound = true;
+      if (it.type === S.clueItem) G.clueFound = true;
       AU.sfx.pickup();
     }
     const g = G.girl;
     if (g && !g.freed && dist(P, g) < 1.3) freeGirl();
-    if (G.mode === 'suppress') {
-      for (const h of G.hostages) {
-        if (h.freed || dist(P, h) > 1.5) continue;
-        if (!G.enemies.some((e) => e.room === h.room && isActive(e))) freeRoom(h.room);
-      }
-    } else if (P.inv.key && Math.hypot(P.x - TG.BACKGATE.x, P.z - TG.BACKGATE.z) < 1.8) {
-      if (G.mode !== 'rescue' || (G.girlFreed && G.girl.hp > 0 && dist(P, G.girl) < 4)) {
-        worldRefs.backGate.visible = false;
+    // 2人そろって出口に着いたらクリア
+    if (G.girlFreed && (!S.key || P.inv.key) && g.hp > 0 && dist(P, g) < 4) {
+      for (const ex of S.exits) {
+        if (Math.hypot(P.x - ex.x, P.z - ex.z) > 1.8) continue;
+        worldRefs.onExit();
         clear();
+        break;
       }
     }
   }
@@ -917,14 +884,14 @@
     }
     autoInteract();
     regen(dt);
-    if (!G.hint.left && M.roomAt(P.x, P.z).id !== '2a') G.hint.left = true;
+    if (!G.hint.left && M.roomAt(P.x, P.z).id !== S.startRoom) G.hint.left = true;
   }
   function regen(dt) {
     if (P.regenT > 0) { P.regenT -= dt; return; }
     if (G.phase === 'sneak' && P.hp < 100) P.hp = Math.min(100, P.hp + dt * 1.2);
   }
 
-  // ついてくる仲間（白石さん／解放した生徒）
+  // ついてくる女の子
   // 主人公の少し後ろを保ち、まっすぐ行けるときは直進、壁や机があるときは経路をたどる。
   // 引っかかったら経路を引き直し、横に避ける。瞬間移動はしない。
   const R_FOLLOW = 0.24;
@@ -949,6 +916,8 @@
         if (!walkable(f.x, f.z, P.x, P.z)) {
           f.repathT -= dt;
           if (!f.path || f.repathT <= 0) { f.repathT = 0.45; f.path = findPath(f.x, f.z, P.x, P.z); f.pathI = 0; }
+          // 階段で階を移ったら、前の階に残った経路の点は飛ばす
+          while (f.path && f.pathI < f.path.length - 1 && !sameFloor(f.path[f.pathI], f)) f.pathI++;
           if (f.path && f.path.length) {
             // 見通せる先のノードまで飛ばして、角を自然に曲がる
             while (f.pathI < f.path.length - 1 && walkable(f.x, f.z, f.path[f.pathI + 1].x, f.path[f.pathI + 1].z)) f.pathI++;
@@ -990,36 +959,11 @@
       G.followers.forEach((o) => { if (o !== f) sep(o, 0.55); });
       // しゃがむのは主人公に合わせる。見つかっている間は、止まったら身をかがめる
       f.crouch = P.crouch || !!P.hidden || (G.phase === 'alert' && !f.moving);
-      // 白石さんの体力は、主人公と同じく見つかっていないときに回復する
+      // 女の子の体力は、主人公と同じく見つかっていないときに回復する
       if (f.kind === 'girl') {
         if (f.hurtT > 0) f.hurtT -= dt;
         if (f.regenT > 0) f.regenT -= dt;
         else if (G.phase === 'sneak' && f.hp < 100) f.hp = Math.min(100, f.hp + dt * 1.2);
-      }
-      // 仲間の攻撃（警戒中のみ）と、縛り上げ
-      if (f.kind === 'ally') {
-        f.atkT -= dt;
-        if (f.atkT <= 0) {
-          f.atkT = 1.3 + Math.random() * 0.6;
-          let tgt = null, bd = 8;
-          for (const e of G.enemies) {
-            if (e.state !== 'alert') continue;
-            const ed = dist(f, e);
-            if (ed < bd && los(f.x, f.z, e.x, e.z, false)) { tgt = e; bd = ed; }
-          }
-          if (tgt) {
-            tracer(f.x, f.z, tgt.x, tgt.z, 0xffffff);
-            AU.sfx.clack();
-            tgt.stun += tgt.boss ? 0.09 : 0.2;
-            if (tgt.stun >= 1) { tgt.stun = 0; knockDown(tgt, 35, 'ally'); }
-          }
-        }
-        for (const e of G.enemies) {
-          if (e.state !== 'down' || dist(f, e) > 3.5) continue;
-          e.tieT += dt;
-          if (e.tieT > 1.6) { e.tieT = 0; tieUp(e); }
-          break;
-        }
       }
     });
   }
@@ -1045,38 +989,38 @@
     G.anySee = false;
   }
 
-  function checkWin() {
-    if (G.mode === 'suppress') {
-      if (G.enemies.every((e) => e.state === 'tied')) clear();
+  // いちばん近い出口（3D上の距離で比べる。出口はどれも1階）
+  function nearestExit() {
+    let best = S.exits[0], bd = 1e9;
+    for (const ex of S.exits) {
+      const d = Math.hypot(M.wx(P.x) - M.wx(ex.x), P.z - ex.z) + (floorOf(P) !== M.floorOf(ex.x) ? 8 : 0);
+      if (d < bd) { bd = d; best = ex; }
     }
+    return best;
   }
-
-  const DOOR_2A = { x: 24, z: 14.2 };
-  const KEY_POS = { x: 48.5, z: 22.5 };
+  // 共通のルール：最初の部屋を出る → 女の子を探す → 助ける →（鍵があれば鍵）→ 2人で出口へ
   function objective() {
-    const m = G.mode;
-    const out2a = G.hint.left;
-    if (m === 'escape' || m === 'rescue') {
-      if (m === 'rescue' && !G.girlFreed) {
-        if (!out2a) return { text: '教室から出ろ', pos: DOOR_2A, label: '出口' };
-        if (!G.clueFound && dist(P, G.girl) > 7) return { text: '白石さんを探せ：' + G.spot.hint, pos: null, label: '' };
-        return { text: '白石さんを助けろ', pos: G.girl, label: '白石さん' };
-      }
-      if (!out2a) return { text: '教室から出ろ', pos: DOOR_2A, label: '出口' };
-      if (!P.inv.key) return { text: '裏門の鍵を探せ', pos: KEY_POS, label: '鍵' };
-      return { text: m === 'rescue' ? '白石さんと裏門へ' : '裏門から脱出', pos: TG.BACKGATE, label: '裏門' };
+    if (!G.hint.left) return S.leave;
+    if (!G.girlFreed) {
+      if (!G.clueFound && dist(P, G.girl) > 7) return { text: S.texts.find + G.spot.hint, pos: null, label: '' };
+      return { text: S.texts.rescue, pos: G.girl, label: S.texts.girlLabel };
     }
-    const left = G.enemies.filter((e) => e.state !== 'tied').length;
-    // 解放できる仲間 → 一番近い敵 の順に案内
-    let best = null, bd = 1e9;
-    for (const h of G.hostages) {
-      if (h.freed || G.enemies.some((e) => e.room === h.room && isActive(e))) continue;
-      if (dist(P, h) < bd) { best = { pos: h, label: '仲間' }; bd = dist(P, h); }
-    }
-    if (!best) for (const e of G.enemies) if (isActive(e) && dist(P, e) < bd) { best = { pos: e, label: e.boss ? 'リーダー' : '敵' }; bd = dist(P, e); }
-    return { text: 'テロリスト 残り' + left + '人', pos: best ? best.pos : null, label: best ? best.label : '' };
+    if (S.key && !P.inv.key) return S.key;
+    const ex = nearestExit();
+    return { text: S.exitText, pos: ex, label: ex.label };
   }
-
+  // 画面とレーダーで指す場所。目的地が別の階なら、経路上の階段（エスカレーター）を指す
+  function guideTarget() {
+    const o = objective();
+    if (!o.pos || sameFloor(o.pos, P) || !G.guide) return o;
+    const k = G.guide.findIndex((q) => q.portal);
+    if (k < 0) return o;
+    // 上りは階段・エスカレーターの乗り口（高さが変わり始めるところ）を指す
+    const y0 = M.wy(P.x, P.z);
+    let j = k;
+    while (j > 0 && Math.abs(M.wy(G.guide[j - 1].x, G.guide[j - 1].z) - y0) > 0.05) j--;
+    return { text: o.text, pos: G.guide[j], label: M.floorOf(o.pos.x) > floorOf(P) ? '上の階へ' : '下の階へ' };
+  }
   // ===================== 入力 =====================
   const keys = {};
   const pressed = { action: false, crouch: false };
@@ -1260,17 +1204,17 @@
   const wpEl = $('wp'), wpArrow = $('wpArrow'), wpLabel = $('wpLabel');
   const wpV = new THREE.Vector3();
   function updateWaypoint() {
-    const o = objective();
+    const o = guideTarget();
     if (!o.pos || screen !== 'play') { wpEl.hidden = true; beacon.visible = false; return; }
     beacon.visible = true;
-    beacon.position.set(o.pos.x, 1.3, o.pos.z);
-    const dx = o.pos.x - P.x, dz = o.pos.z - P.z, d = Math.hypot(dx, dz);
+    place(beacon, o.pos.x, o.pos.z, 1.3);
+    const dx = M.wx(o.pos.x) - M.wx(P.x), dz = o.pos.z - P.z, d = Math.hypot(dx, dz);
     const W = window.innerWidth, H = window.innerHeight;
     const rel = angDiff(P.camA, Math.atan2(dx, dz));
     const hfov = Math.atan(Math.tan((camera.fov * Math.PI) / 360) * camera.aspect);
     let sx, sy, edge = 0;
     if (Math.abs(rel) < hfov * 0.92) {
-      wpV.set(o.pos.x, 1.2, o.pos.z).project(camera);
+      wpV.set(M.wx(o.pos.x), M.wy(o.pos.x, o.pos.z) + 1.2, o.pos.z).project(camera);
       sx = ((wpV.x + 1) / 2) * W;
       sy = ((1 - wpV.y) / 2) * H;
     } else {
@@ -1291,20 +1235,18 @@
   const rctx = radar.getContext('2d');
   const RS = 5; // 1mあたりのピクセル
   const mapCanvas = document.createElement('canvas');
-  mapCanvas.width = M.W * RS; mapCanvas.height = M.H * RS;
-  (function drawMap() {
+  // ステージを読み込むたびに描き直す（2階建てなら1階と2階が横並びの1枚になる）
+  function drawMap() {
+    mapCanvas.width = M.W * RS; mapCanvas.height = M.H * RS;
     const c = mapCanvas.getContext('2d');
     c.fillStyle = '#0b1f17'; c.fillRect(0, 0, mapCanvas.width, mapCanvas.height);
     for (let z = 0; z < M.H; z++) for (let x = 0; x < M.W; x++) {
-      const t = M.get(x, z);
-      if (t === M.T.WALL || t === M.T.LOCKER || t === M.T.SHELF) c.fillStyle = '#8fe0b0';
-      else if (t === M.T.TREE) c.fillStyle = '#3f8a5c';
-      else if (t === M.T.FENCE || t === M.T.GATE || t === M.T.BACKGATE) c.fillStyle = '#5aa07a';
-      else if (M.solid(x, z)) c.fillStyle = '#2f6a4b';
-      else continue;
+      const col = M.radarColor(M.get(x, z)) || (M.solid(x, z) ? '#2f6a4b' : null);
+      if (!col) continue;
+      c.fillStyle = col;
       c.fillRect(x * RS, z * RS, RS, RS);
     }
-  })();
+  }
   function drawRadar(t) {
     const w = radar.width, h = radar.height;
     rctx.save();
@@ -1326,15 +1268,15 @@
     rctx.rotate(P.camA - Math.PI); // カメラの向きが上
     rctx.translate(-P.x * RS, -P.z * RS);
     rctx.drawImage(mapCanvas, 0, 0);
-    // 目標までのルート
-    const o = objective();
+    // 目標までのルート（別の階へ移るところまで）
+    const o = guideTarget();
     if (G.guide && G.guide.length) {
       rctx.strokeStyle = 'rgba(255,211,77,.85)';
       rctx.lineWidth = RS * 0.4;
       rctx.setLineDash([RS * 0.8, RS * 0.6]);
       rctx.beginPath();
       rctx.moveTo(P.x * RS, P.z * RS);
-      for (const q of G.guide) rctx.lineTo(q.x * RS, q.z * RS);
+      for (const q of G.guide) { rctx.lineTo(q.x * RS, q.z * RS); if (q.portal) break; }
       rctx.stroke();
       rctx.setLineDash([]);
     }
@@ -1342,9 +1284,6 @@
       rctx.fillStyle = '#ffd34d';
       rctx.beginPath(); rctx.arc(o.pos.x * RS, o.pos.z * RS, RS * 0.9, 0, Math.PI * 2); rctx.fill();
     }
-    // 人質
-    rctx.fillStyle = '#9ad1ff';
-    if (G.mode === 'suppress') for (const hst of G.hostages) if (!hst.freed) rctx.fillRect(hst.x * RS - 2, hst.z * RS - 2, 4, 4);
     // 敵
     for (const e of G.enemies) {
       if (e.state === 'tied') { rctx.fillStyle = '#556'; rctx.fillRect(e.x * RS - 3, e.z * RS - 3, 6, 6); continue; }
@@ -1370,6 +1309,19 @@
     rctx.fillStyle = '#ffffff';
     rctx.beginPath(); rctx.moveTo(0, -RS * 1.3); rctx.lineTo(RS * 0.9, RS * 0.9); rctx.lineTo(-RS * 0.9, RS * 0.9); rctx.closePath(); rctx.fill();
     rctx.restore();
+    // 今いる階
+    if (M.floors > 1) {
+      // レーダーは丸く切り抜かれるので、下の中央に出す
+      const fs = Math.round(h * 0.15);
+      rctx.font = '900 ' + fs + 'px "Zen Kaku Gothic New", sans-serif';
+      rctx.fillStyle = 'rgba(6,19,13,.8)';
+      rctx.fillRect(w / 2 - fs * 1.05, h - fs * 1.6, fs * 2.1, fs * 1.3);
+      rctx.fillStyle = '#ffd34d';
+      rctx.textAlign = 'center';
+      rctx.textBaseline = 'middle';
+      rctx.fillText((floorOf(P) + 1) + 'F', w / 2, h - fs * 0.95);
+      rctx.textAlign = 'left';
+    }
     if (G.phase === 'evasion') {
       rctx.fillStyle = 'rgba(255,170,60,.12)';
       rctx.fillRect(0, 0, w, h);
@@ -1392,36 +1344,36 @@
     // 主人公
     const pg = P.model.group;
     pg.visible = !P.hidden && P.camDist > 0.3;
-    pg.position.set(P.x, 0, P.z);
+    place(pg, P.x, P.z);
     pg.rotation.y = P.a;
     MD.pose(P.model, P.crouch ? 'crouch' : P.running && P.moving ? 'run' : 'stand', P.moving, dt, P.running ? 12 : P.crouch ? 6 : 8);
     if (P.actT > 0) { P.model.aR.sh.rotation.x = -1.5; P.model.aR.el.rotation.x = -0.2; }
     // 敵
     for (const e of G.enemies) {
       const g = e.model.group;
-      g.position.set(e.x, 0, e.z);
+      place(g, e.x, e.z);
       g.rotation.y = e.a;
       const st = e.state === 'down' ? 'down' : e.state === 'tied' ? 'tied' : 'stand';
       MD.pose(e.model, st === 'stand' && e.moving && e.moveSpeed > 3 ? 'run' : st, e.moving, dt, e.moveSpeed > 3 ? 11 : 7);
-      e.mark.position.set(e.x, st === 'stand' ? 2.45 : 0.9, e.z);
+      place(e.mark, e.x, e.z, st === 'stand' ? 2.45 : 0.9);
       updateCone(e);
     }
     // 仲間
     for (const f of G.followers) {
-      f.model.group.position.set(f.x, 0, f.z);
+      place(f.model.group, f.x, f.z);
       f.model.group.rotation.y = f.a;
       const fast = f.speedNow > 3.2;
       MD.pose(f.model, f.crouch ? 'crouch' : fast ? 'run' : 'stand', f.moving, dt, fast ? 12 : f.crouch ? 6 : 8);
     }
     if (G.girl && !G.girl.freed) {
-      G.girl.heart.position.y = 1.5 + Math.sin(t * 3) * 0.1;
+      G.girl.heart.position.y = M.wy(G.girl.x, G.girl.z) + 1.5 + Math.sin(t * 3) * 0.1;
       G.girl.heart.visible = G.clueFound || dist(P, G.girl) < 7;
     }
     // アイテム
     for (const it of G.items) {
       if (it.taken) continue;
       it.model.rotation.y = t * 1.6;
-      it.model.position.y = 0.08 + Math.sin(t * 3 + it.x) * 0.05;
+      it.model.position.y = it.base + 0.08 + Math.sin(t * 3 + it.x) * 0.05;
       it.glow.material.opacity = 0.4 + Math.sin(t * 4) * 0.3;
     }
     // パトランプ
@@ -1455,17 +1407,16 @@
       const k = P.camDist / Math.max(0.01, Math.hypot(tx - P.x, tz - P.z));
       // 背後が壁で寄りすぎるときは、上から見下ろすように持ち上げる
       const lift = Math.max(0, 1.2 - P.camDist) * 0.9 + P.camOver * 0.7;
-      // 屋内は天井の少し下、屋外はもっと高くから見下ろす
-      const indoor = (P.x >= 4 && P.x <= 60 && P.z >= 3 && P.z <= 28) || (P.x >= 5 && P.x <= 15 && P.z >= 31 && P.z <= 40);
-      const top = indoor ? 2.62 : 3.6;
-      const cy = clamp(top - 0.15 - (P.crouch ? 0.25 : 0) + lift * 0.3 - Math.sin(P.pitch) * 1.4, 0.6, top);
-      camera.position.set(P.x + (tx - P.x) * k, cy + bob * 0.4, P.z + (tz - P.z) * k);
+      // 屋内は天井の少し下、屋外はもっと高くから見下ろす（高さは今いる階・階段の高さから）
+      const base = M.wy(P.x, P.z), top = S.camTop(P.x, P.z);
+      const cy = base + clamp(top - 0.15 - (P.crouch ? 0.25 : 0) + lift * 0.3 - Math.sin(P.pitch) * 1.4, 0.6, top);
+      camera.position.set(M.wx(P.x + (tx - P.x) * k), cy + bob * 0.4, P.z + (tz - P.z) * k);
       // 主人公の少し先（肩の延長線上）を見る。持ち上げたカメラでも主人公が画面に入る
       const L = 3.6;
-      tpsLook.set(P.x + rx * 0.45 + fx * L, 0.75 - lift * 0.6 + Math.sin(P.pitch) * L, P.z + rz * 0.45 + fz * L);
+      tpsLook.set(M.wx(P.x) + rx * 0.45 + fx * L, base + 0.75 - lift * 0.6 + Math.sin(P.pitch) * L, P.z + rz * 0.45 + fz * L);
     } else {
       P.camDist = 0;
-      camera.position.set(x, P.eye + bob, z);
+      camera.position.set(M.wx(x), M.wy(x, z) + P.eye + bob, z);
     }
     if (shake > 0) {
       shake -= dt;
@@ -1481,7 +1432,7 @@
   }
 
   // 主人公の頭からカメラ位置までの間に壁があれば、手前の割合（0〜1）を返す
-  const blocksCam = (x, z, wallsOnly) => (wallsOnly ? M.get(x, z) === M.T.WALL || M.get(x, z) === M.T.TREE : M.sight(x, z));
+  const blocksCam = (x, z, wallsOnly) => (wallsOnly ? M.camWall(x, z) : M.sight(x, z));
   function camClip(x0, z0, x1, z1, wallsOnly) {
     const d = Math.hypot(x1 - x0, z1 - z0);
     const n = Math.max(1, Math.ceil(d / 0.08));
@@ -1525,17 +1476,17 @@
   $('cine').addEventListener('pointerdown', (e) => { if (e.target.id === 'cineSkip') return; cineNext(); });
   $('cineSkip').addEventListener('click', () => { if (cine) { const d = cine.done; cine = null; d(); } });
 
-  function startMode(modeId, diff, quick) {
+  function startStage(stageId, diff, quick) {
     AU.init();
     tryLandscape();
-    newGame(modeId, diff, quick);
+    newGame(stageId, diff, quick);
     const begin = () => {
       screen = 'play';
       show('hud');
     };
     // コンティニュー時はオープニングを飛ばす
     if (quick) begin();
-    else startCine(OPENING.concat(STORY[modeId].intro.map((l) => (l.riddle ? { w: l.w, t: G.spot.riddle } : l))), begin);
+    else startCine(S.story.opening.map((l) => (l.riddle ? { w: l.w, t: G.spot.riddle } : l)), begin);
   }
 
   function pause(on) {
@@ -1548,7 +1499,7 @@
     screen = 'over';
     AU.bgm('none');
     AU.sfx.over();
-    $('overLine').textContent = kind === 'girl' ? '白石さん！？ 白石さーーーん！！' : NAME + '？ ' + NAME + '！？ ' + NAME + 'ーーーーッ！！';
+    $('overLine').textContent = kind === 'girl' ? S.over.girl : S.over.dead;
     setTimeout(() => show('over'), 600);
     flash('hurt');
   }
@@ -1559,27 +1510,26 @@
     AU.bgm('none');
     AU.sfx.clear();
     screen = 'cine-wait';
-    setTimeout(() => startCine(STORY[G.mode].ending, showResult), 900);
+    setTimeout(() => startCine(S.story.ending, showResult), 900);
   }
 
   function rankOf() {
-    const s = G.stats;
-    const fast = G.time < (G.mode === 'suppress' ? 900 : 480);
-    if (s.alerts === 0 && (G.mode === 'suppress' || s.downs === 0)) return fast ? ['ゴースト', '伝説の帰宅部'] : ['フォックス', '気配を消せる男'];
-    if (s.alerts === 0) return ['フォックス', '気配を消せる男'];
-    if (s.alerts <= 2) return ['ハウンド', '校内の猟犬'];
-    if (s.alerts <= 5) return ['ドッグ', 'あばれる中学2年生'];
-    return ['チキン', 'ただの迷惑な生徒'];
+    const s = G.stats, r = S.ranks;
+    const fast = G.time < S.par + 60;
+    if (s.alerts === 0 && s.downs === 0) return fast ? ['ゴースト', r.ghost] : ['フォックス', r.fox];
+    if (s.alerts === 0) return ['フォックス', r.fox];
+    if (s.alerts <= 2) return ['ハウンド', r.hound];
+    if (s.alerts <= 5) return ['ドッグ', r.dog];
+    return ['チキン', r.chicken];
   }
-  // 総合ランク（S/A/B/C）：見つかった回数・時間・受けたダメージ・難易度から点数を出す
-  const PAR = { escape: 300, rescue: 420, suppress: 720 };
+  // 総合ランク（S/A/B/C）：見つかった回数・時間・受けたダメージ・難易度から点数を出す（基準時間はステージごと）
   function gradeOf() {
     const s = G.stats;
     let score = 100;
     score -= s.alerts * 12;
-    score -= Math.max(0, G.time - PAR[G.mode]) / 12;
+    score -= Math.max(0, G.time - S.par) / 12;
     score -= s.damage * 0.15;
-    if (G.mode === 'rescue') score -= (s.girlDamage || 0) * 0.2;
+    score -= (s.girlDamage || 0) * 0.2;
     score += { easy: -12, normal: 0, hard: 10 }[G.diff];
     return score >= 90 ? 'S' : score >= 72 ? 'A' : score >= 50 ? 'B' : 'C';
   }
@@ -1592,20 +1542,25 @@
     const grade = gradeOf();
     $('resGrade').textContent = grade;
     $('resGrade').className = 'g-' + grade;
-    $('resMode').textContent = G.cfg.name + '（' + G.D.name + '）　MISSION COMPLETE';
+    $('resMode').textContent = S.title + '（' + G.D.name + '）　MISSION COMPLETE';
     $('resRank').textContent = code;
     $('resRankSub').textContent = sub;
     const s = G.stats;
-    const rows = [['クリアタイム', fmtTime(G.time)], ['見つかった回数', s.alerts + '回'], ['気絶させた数', s.downs + '人'], ['縛り上げた数', s.ties + '人'], ['受けたダメージ', Math.round(s.damage)]];
-    if (G.mode === 'rescue') rows.push(['白石さんのダメージ', Math.round(s.girlDamage || 0)]);
-    if (G.mode === 'suppress') rows.push(['解放した仲間', s.freed + '人']);
+    const rows = [['クリアタイム', fmtTime(G.time)], ['見つかった回数', s.alerts + '回'], ['気絶させた数', s.downs + '人'], ['受けたダメージ', Math.round(s.damage)],
+      [S.names.girl + 'のダメージ', Math.round(s.girlDamage || 0)]];
     $('resStats').innerHTML = rows.map(([k, v]) => '<div><dt>' + k + '</dt><dd>' + v + '</dd></div>').join('');
-    saveBest(G.mode + '-' + G.diff, code, G.time, s.alerts, grade);
+    saveBest(S.id + '-' + G.diff, code, G.time, s.alerts, grade);
   }
 
   // ===================== 記録 =====================
   const RANK_ORDER = ['チキン', 'ドッグ', 'ハウンド', 'フォックス', 'ゴースト'];
-  function loadBest() { try { return JSON.parse(localStorage.getItem('tg-best') || '{}'); } catch (e) { return {}; } }
+  function loadBest() {
+    let b = {};
+    try { b = JSON.parse(localStorage.getItem('tg-best') || '{}') || {}; } catch (e) { return {}; }
+    // 以前の「好きな子を救え」の記録は、学校ステージの記録として引き継ぐ
+    for (const k of Object.keys(b)) if (k.startsWith('rescue-') && !b['school-' + k.slice(7)]) b['school-' + k.slice(7)] = b[k];
+    return b;
+  }
   const GRADE_ORDER = ['C', 'B', 'A', 'S'];
   function saveBest(mode, rank, time, alerts, grade) {
     const b = loadBest();
@@ -1621,21 +1576,21 @@
     const best = loadBest();
     const grid = $('modes');
     grid.innerHTML = '';
-    Object.values(TG.MODES).forEach((m) => {
+    Object.values(TG.STAGES).sort((a, b) => a.order - b.order).forEach((m) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'mode';
       const cleared = Object.keys(TG.DIFFS).filter((d) => best[m.id + '-' + d]).map((d) => TG.DIFFS[d].name);
       const rec = cleared.length ? '<span class="mode-best">クリア済み：' + cleared.join('・') + '</span>' : '';
-      b.innerHTML = '<span class="mode-kind">' + m.kind + '</span><span class="mode-name">' + m.name + '</span><span class="mode-hint">' + m.hint + '</span><span class="mode-goal">' + m.goal + '</span>' + rec;
+      b.innerHTML = '<span class="mode-kind">' + m.place + '</span><span class="mode-name">' + m.title + '</span><span class="mode-hint">' + m.desc + '</span><span class="mode-goal">' + m.goal + '</span>' + rec;
       b.addEventListener('click', () => pickDiff(m));
       grid.appendChild(b);
     });
   }
-  // ストーリーを選んだあとに難易度を選ぶ
+  // ステージを選んだあとに難易度を選ぶ
   function pickDiff(m) {
     const best = loadBest();
-    $('diffStory').textContent = m.name;
+    $('diffStory').textContent = m.title;
     const box = $('diffs');
     box.innerHTML = '';
     Object.entries(TG.DIFFS).forEach(([id, d]) => {
@@ -1643,9 +1598,9 @@
       b.type = 'button';
       b.className = 'diff diff-' + id;
       const rec = best[m.id + '-' + id];
-      b.innerHTML = '<span class="diff-name">' + d.name + '</span><span class="diff-count">テロリスト ' + m.enemies[id].length + '人</span>' +
+      b.innerHTML = '<span class="diff-name">' + d.name + '</span><span class="diff-count">テロリスト ' + m.lists[id].length + '人</span>' +
         (rec ? '<span class="diff-best">' + (rec.grade ? 'ランク' + rec.grade + '／' : '') + rec.rank + '</span>' : '');
-      b.addEventListener('click', () => { $('diffPick').hidden = true; startMode(m.id, id); });
+      b.addEventListener('click', () => { $('diffPick').hidden = true; startStage(m.id, id); });
       box.appendChild(b);
     });
     $('diffPick').hidden = false;
@@ -1674,12 +1629,12 @@
   }
 
   $('resume').addEventListener('click', () => pause(false));
-  $('restart').addEventListener('click', () => { startMode(G.mode, G.diff, true); });
+  $('restart').addEventListener('click', () => { startStage(G.stage, G.diff, true); });
   $('quitBtn').addEventListener('click', toTitle);
   $('muteBtn').addEventListener('click', () => { AU.setMuted(!AU.isMuted()); $('muteBtn').textContent = AU.isMuted() ? '音：OFF' : '音：ON'; });
-  $('continueBtn').addEventListener('click', () => { startMode(G.mode, G.diff, true); });
+  $('continueBtn').addEventListener('click', () => { startStage(G.stage, G.diff, true); });
   $('overTitle').addEventListener('click', toTitle);
-  $('resRetry').addEventListener('click', () => { startMode(G.mode, G.diff); });
+  $('resRetry').addEventListener('click', () => { startStage(G.stage, G.diff); });
   $('resTitle').addEventListener('click', toTitle);
 
   // ===================== メインループ =====================
@@ -1697,7 +1652,6 @@
       for (const e of G.enemies) updateEnemy(e, dt);
       updateFollowers(dt);
       updatePhase(dt);
-      checkWin();
       updateFx(dt);
       G.guideT -= dt;
       if (G.guideT <= 0) {
@@ -1716,10 +1670,11 @@
       syncVisuals(screen === 'play' || screen === 'cine' ? dt : 0, t);
       updateCamera(dt);
     } else {
-      // タイトル：校舎の上空をゆっくり回る
+      // タイトル：舞台の上空をゆっくり回る
+      const tc = S.titleCam;
       titleCam.a += dt * 0.06;
-      camera.position.set(32 + Math.sin(titleCam.a) * 34, 26, 22 + Math.cos(titleCam.a) * 34);
-      camera.lookAt(32, 0, 22);
+      camera.position.set(tc.x + Math.sin(titleCam.a) * tc.r, tc.h, tc.z + Math.cos(titleCam.a) * tc.r);
+      camera.lookAt(tc.x, 0, tc.z);
       worldRefs.policeLights.forEach((m, i) => { m.visible = (Math.floor(t * 4) + i) % 2 === 0; });
     }
     renderer.render(scene, camera);
@@ -1735,6 +1690,7 @@
   }
   window.addEventListener('resize', sizeRadar);
 
+  loadStage('school');
   buildTitle();
   show('title');
   requestAnimationFrame((n) => { lastT = n; sizeRadar(); frame(n); });
@@ -1742,5 +1698,5 @@
   // HUD表示後にレーダーのサイズを合わせる
   new ResizeObserver(sizeRadar).observe(radar);
 
-  TG.debug = { get G() { return G; }, get P() { return P; }, get screen() { return screen; }, startMode, cineNext, clear: () => clear(), findPath, setSpot: (i) => { lastSpot = i; } };
+  TG.debug = { get G() { return G; }, get P() { return P; }, get screen() { return screen; }, startStage, cineNext, clear: () => clear(), findPath, moveBy, setSpot: (i) => { lastSpot[S.id] = i; }, get S() { return S; } };
 })();

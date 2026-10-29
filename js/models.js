@@ -55,6 +55,12 @@
       h.scale.set(1, 0.9, 0.55); h.position.y = 0.1; g.add(h);
       const r = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.008, 8, 16), mat(0xd9d9d9));
       r.position.y = 0.2; g.add(r);
+    } else if (type === 'bag') {
+      // 美咲のショッピングバッグ（ピンクの紙袋）
+      g.add(box(0.3, 0.32, 0.12, 0xf28cb1, 0, 0.18, 0));
+      g.add(box(0.31, 0.05, 0.13, 0xffffff, 0, 0.28, 0));
+      const hd = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.012, 6, 14, Math.PI), mat(0xffffff));
+      hd.position.y = 0.34; g.add(hd);
     } else if (type === 'key') {
       g.add(box(0.06, 0.04, 0.24, 0xf2c94c, 0, 0.1, 0));
       const r = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.025, 8, 16), mat(0xf2c94c));
