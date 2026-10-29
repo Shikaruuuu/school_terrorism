@@ -117,6 +117,7 @@
   function loadStage(id) {
     if (S && S.id === id) return;
     S = TG.STAGES[id];
+    preloadFaces();
     M = S.map;
     for (const k in stageWorld) stageWorld[k].group.visible = false;
     if (!stageWorld[id]) {
@@ -396,7 +397,8 @@
       mark.material.depthTest = true;
       mark.visible = false;
       dyn.add(mark);
-      G.informants.push({ x: c.x, z: c.z, name: c.name, hint, model: m, mark, talked: false });
+      const keyHint = I.keyHints ? I.keyHints[k % I.keyHints.length] : null;
+      G.informants.push({ x: c.x, z: c.z, name: c.name, hint, keyHint, model: m, mark, talked: false, keyTalked: false });
     });
   }
   function informantNear() {
@@ -404,10 +406,13 @@
     for (const c of G.informants) { const d = dist(P, c); if (d < bd) { bd = d; best = c; } }
     return best;
   }
+  // 女の子を助けたあと、鍵がまだなら、クラスメートは鍵のありかを教えてくれる
+  const askKey = () => !!(G.girlFreed && S.key && !P.inv.key);
+  const hasNews = (c) => (askKey() ? c.keyHint && !c.keyTalked : !c.talked);
   // 話しかける：ひそひそ声でも少し時間がかかり、すぐ近くの敵には聞こえる
   function startTalk(c) {
     P.a = Math.atan2(c.x - P.x, c.z - P.z);
-    if (c.talked) { say(c.name, c.hint.line); return; }
+    if (!hasNews(c)) { say(c.name, askKey() && c.keyHint ? c.keyHint.line : c.hint.line); return; }
     G.talk = { c, t: 0 };
     makeNoise(P.x, P.z, 2.4, 'talk');
     AU.sfx.text();
@@ -415,14 +420,22 @@
   function finishTalk() {
     const c = G.talk.c;
     G.talk = null;
+    if (askKey()) {
+      c.keyTalked = true;
+      G.keyHint = c.keyHint;
+      say(c.name, c.keyHint.line, 6);
+      AU.sfx.pickup();
+      return;
+    }
     c.talked = true;
-    c.mark.visible = false;
     if (!G.hints.some((h) => h.short === c.hint.short)) G.hints.push(c.hint);
     say(c.name, c.hint.line, 6);
     AU.sfx.pickup();
   }
-  // 聞いたヒントが指す範囲（重なった所）
+  // 聞いたヒントが指す範囲（重なった所）。助けたあとは鍵の話の範囲
   function hintRegion() {
+    if (G.girlFreed) return G.keyHint && !P.inv.key ? G.keyHint.rect : null;
+    if (G.clueFound) return null;
     let r = null;
     for (const h of G.hints) {
       if (!h.rect) continue;
@@ -927,6 +940,8 @@
     AU.sfx.free();
     G.stats.freed++;
     if (S.onRescue) S.onRescue(ctx);
+    // 女の子との会話（ステージに用意があれば）。終わったら元の画面に戻る
+    if (S.rescueTalk) startCine(S.rescueTalk, () => { screen = 'play'; show('hud'); });
   }
   // 近づくだけで起きること（鍵・手がかりを拾う、女の子を助ける、出口）
   function autoInteract() {
@@ -1158,7 +1173,11 @@
       }
       return { text: S.texts.rescue, pos: G.girl, label: S.texts.girlLabel };
     }
-    if (S.key && !P.inv.key) return S.key;
+    if (S.key && !P.inv.key) {
+      // 鍵のありかは、誰かに聞くまで分からない（話を聞ける人がいないステージでは最初から案内する）
+      if (S.informants && !G.keyHint) return { text: S.key.text + '：' + S.key.ask, pos: null, label: '' };
+      return { text: S.key.text, pos: S.key, label: S.key.label };
+    }
     const ex = G.exitPick && !G.closedExits.has(S.exits.indexOf(G.exitPick)) ? G.exitPick : nearestExit();
     return { text: S.exitText, pos: ex, label: ex.label };
   }
@@ -1326,7 +1345,7 @@
     else if (ph === 'evasion') hud.phaseT.textContent = Math.ceil(G.evaT);
     const near = !P.hidden && !G.talk && !enemyInReach() ? informantNear() : null;
     setText(hud.actLabel, 'act', P.hidden ? '出る' : G.talk ? '……' : near ? '話す' : '殴る');
-    hud.actLabel.parentElement.classList.toggle('pulse', !!P.hidden || !!(near && !near.talked));
+    hud.actLabel.parentElement.classList.toggle('pulse', !!P.hidden || !!(near && hasNews(near)));
     setText(hud.crouchLabel, 'cr', P.crouch ? '立つ' : 'しゃがむ');
     hud.crouch.classList.toggle('on', P.crouch);
     updateSusp();
@@ -1463,7 +1482,7 @@
       rctx.fillRect(hr.x0 * RS, hr.z0 * RS, (hr.x1 - hr.x0 + 1) * RS, (hr.z1 - hr.z0 + 1) * RS);
     }
     for (const c of G.informants) {
-      rctx.fillStyle = c.talked ? '#5b7a88' : '#7fe3ff';
+      rctx.fillStyle = hasNews(c) ? '#7fe3ff' : '#5b7a88';
       rctx.beginPath(); rctx.arc(c.x * RS, c.z * RS, RS * 0.6, 0, Math.PI * 2); rctx.fill();
     }
     // 仲間
@@ -1475,6 +1494,22 @@
     rctx.fillStyle = '#ffffff';
     rctx.beginPath(); rctx.moveTo(0, -RS * 1.3); rctx.lineTo(RS * 0.9, RS * 0.9); rctx.lineTo(-RS * 0.9, RS * 0.9); rctx.closePath(); rctx.fill();
     rctx.restore();
+    // 方角（地図の上が北。レーダーはカメラの向きで回るので、縁に東西南北を出す）
+    {
+      const r = P.camA - Math.PI, fs = Math.round(h * 0.12), R0 = w / 2 - fs * 0.75;
+      rctx.font = '900 ' + fs + 'px "Zen Kaku Gothic New", sans-serif';
+      rctx.textAlign = 'center';
+      rctx.textBaseline = 'middle';
+      [['北', 0, -1, '#ff7a6a'], ['東', 1, 0, '#d8f5e4'], ['南', 0, 1, '#d8f5e4'], ['西', -1, 0, '#d8f5e4']].forEach(([t, dx, dz, col]) => {
+        const sx = dx * Math.cos(r) - dz * Math.sin(r), sy = dx * Math.sin(r) + dz * Math.cos(r);
+        const x = w / 2 + sx * R0, y = h / 2 + sy * R0;
+        rctx.fillStyle = 'rgba(6,19,13,.75)';
+        rctx.beginPath(); rctx.arc(x, y, fs * 0.62, 0, Math.PI * 2); rctx.fill();
+        rctx.fillStyle = col;
+        rctx.fillText(t, x, y + 1);
+      });
+      rctx.textAlign = 'left';
+    }
     // 今いる階
     if (M.floors > 1) {
       // レーダーは丸く切り抜かれるので、下の中央に出す
@@ -1536,7 +1571,22 @@
         if (x0 >= 0) c.fillText((fl + 1) + 'F' + (fl === floorOf(P) ? '（いまここ）' : ''), X(x0) + 46, oy - 14);
       }
     }
-    // ヒントの範囲
+    // 方角（上が北）
+    c.font = '900 15px "Zen Kaku Gothic New", sans-serif';
+    [['北', X(M.W / 2), oy - 4, '#ff7a6a'], ['南', X(M.W / 2), Z(M.H) + 9, '#d8f5e4'], ['西', ox - 10, Z(M.H / 2), '#d8f5e4'], ['東', X(M.W) + 10, Z(M.H / 2), '#d8f5e4']]
+      .forEach(([t, x, y, col]) => { if (M.floors > 1 && t === '北') return; c.fillStyle = col; c.fillText(t, x, y); });
+    {
+      // 右上の方位記号
+      const cx = W - 30, cy = top + 14;
+      c.fillStyle = 'rgba(6,19,13,.8)';
+      c.beginPath(); c.arc(cx, cy + 6, 20, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#ff7a6a';
+      c.beginPath(); c.moveTo(cx, cy - 8); c.lineTo(cx + 6, cy + 8); c.lineTo(cx - 6, cy + 8); c.closePath(); c.fill();
+      c.font = '900 11px "Zen Kaku Gothic New", sans-serif';
+      c.fillText('北', cx, cy + 17);
+      c.font = '900 15px "Zen Kaku Gothic New", sans-serif';
+    }
+    // ヒントの範囲（どの方角・どの側か分かるように、言葉も添える）
     const hr = hintRegion();
     if (hr) {
       c.fillStyle = 'rgba(255,211,77,.16)';
@@ -1544,6 +1594,10 @@
       c.lineWidth = 2;
       c.fillRect(X(hr.x0), Z(hr.z0), (hr.x1 - hr.x0 + 1) * k, (hr.z1 - hr.z0 + 1) * k);
       c.strokeRect(X(hr.x0), Z(hr.z0), (hr.x1 - hr.x0 + 1) * k, (hr.z1 - hr.z0 + 1) * k);
+      const names = (G.girlFreed ? [G.keyHint] : G.hints).filter((h) => h && h.rect).map((h) => h.short).join('・');
+      c.fillStyle = '#ffd34d';
+      c.font = '900 13px "Zen Kaku Gothic New", sans-serif';
+      c.fillText(names, X((hr.x0 + hr.x1 + 1) / 2), Z((hr.z0 + hr.z1 + 1) / 2));
     }
     // 出口（閉じている出口は×）
     c.font = '700 11px "Zen Kaku Gothic New", sans-serif';
@@ -1558,7 +1612,7 @@
       c.fillStyle = closed ? '#ff8a7a' : '#bff5d4';
       c.fillText(ex.label + (closed ? '（閉鎖）' : ''), lx, lz);
     });
-    for (const ci of G.informants) dot(ci.x, ci.z, Math.max(3.5, k * 0.55), ci.talked ? '#5b7a88' : '#7fe3ff');
+    for (const ci of G.informants) dot(ci.x, ci.z, Math.max(3.5, k * 0.55), hasNews(ci) ? '#7fe3ff' : '#5b7a88');
     // 女の子（居場所が分かっていれば）
     const g = G.girl;
     if (g && (G.girlFreed || G.clueFound)) { c.font = '900 ' + Math.round(Math.max(12, k * 1.6)) + 'px sans-serif'; c.fillStyle = '#ff7aa8'; c.fillText('♥', X(g.x), Z(g.z)); }
@@ -1616,7 +1670,7 @@
       G.girl.heart.visible = G.clueFound || dist(P, G.girl) < 7;
     }
     for (const c of G.informants) {
-      c.mark.visible = !c.talked && sameFloor(c, P) && dist(P, c) < 14;
+      c.mark.visible = hasNews(c) && sameFloor(c, P) && dist(P, c) < 14;
       if (c.mark.visible) place(c.mark, c.x, c.z, 1.45 + Math.sin(t * 3 + c.x) * 0.06);
     }
     // アイテム
@@ -1706,8 +1760,16 @@
   }
 
   let cine = null;
+  // 会話の立ち絵（ステージの S.faces に表情ごとの画像。行に face があれば出す）
+  const faceEl = $('cineFace'), faceCache = {};
+  function preloadFaces() {
+    if (!S.faces) return;
+    for (const k in S.faces) if (!faceCache[S.faces[k]]) { const im = new Image(); im.src = S.faces[k]; faceCache[S.faces[k]] = im; }
+  }
   function startCine(lines, done) {
-    cine = { lines, i: -1, done };
+    cine = { lines, i: -1, done, faces: !!(S && S.faces && lines.some((l) => l.face)) };
+    faceEl.hidden = true;
+    $('cine').classList.toggle('has-face', cine.faces);
     screen = 'cine';
     show('cine');
     cineNext();
@@ -1720,6 +1782,11 @@
     $('cineWho').textContent = l.w || '';
     $('cineWho').hidden = !l.w;
     $('cineText').textContent = l.t;
+    if (cine.faces) {
+      // 表情が変わる行で絵を差し替える。ほかの人が話す間は、少し暗くして残す
+      if (l.face && S.faces[l.face]) { faceEl.src = S.faces[l.face]; faceEl.hidden = false; }
+      faceEl.classList.toggle('dim', !l.face);
+    }
     $('cineCount').textContent = cine.i + 1 + ' / ' + cine.lines.length;
     if (l.fx === 'shake') { shake = 0.6; AU.sfx.door(); AU.sfx.hit(); flash('white'); }
     else AU.sfx.text();

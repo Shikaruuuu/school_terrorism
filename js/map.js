@@ -193,6 +193,7 @@ TG.STAGES = TG.STAGES || {};
   const EAST = { x0: 32, z0: 0, x1: 63, z1: 45 }, WEST = { x0: 0, z0: 0, x1: 31, z1: 45 };
   const NORTH = { x0: 4, z0: 3, x1: 59, z1: 13 }, SOUTH = { x0: 4, z0: 17, x1: 59, z1: 27 }, OUTSIDE = { x0: 0, z0: 28, x1: 63, z1: 45 };
   const line = (short, text, rect) => ({ short, line: '「' + text + '」', rect });
+  const JANITOR = { x0: 40, z0: 17, x1: 50, z1: 27 };
   const RIDDLE = 'この女は別の場所に閉じ込めておけ。', RIDDLE_HINT = '誰か見ていないか？';
 
   TG.STAGES.school = {
@@ -224,7 +225,7 @@ TG.STAGES = TG.STAGES || {};
     start: { locker: { x: 25, z: 4 } },
     startRoom: '2a',
     leave: { text: '教室から出ろ', pos: { x: 24, z: 14.2 }, label: '出口' },
-    key: { ...C(48, 22), text: '裏門の鍵を探せ', label: '鍵' },
+    key: { ...C(48, 22), text: '裏門の鍵を探せ', ask: '誰か知らないか？', label: '鍵' },
     exits: [{ x: 62.5, z: 37.5, label: '裏門' }],
     exitText: GIRL + 'と裏門へ',
     hostages,
@@ -277,7 +278,29 @@ TG.STAGES = TG.STAGES || {};
         { i: 109, name: '山田さん', ...C(19, 23), face: Wd, room: 'infirm' },
       ],
       hints: (spot) => spot.talk,
+      // 白石さんを助けたあとに話しかけると、裏門の鍵のありかを教えてくれる
+      keyHints: [
+        line('用務員室のあたり', '白石さん、無事でよかった……！ 裏門の鍵なら、用務員さんがいつも腰に下げてたよ', JANITOR),
+        line('用務員室のあたり', '鍵？ 用務員室の机の上に、鍵束が置きっぱなしになってるのを見た', JANITOR),
+        line('用務員室のあたり', '白石さん！ ……鍵なら、校舎の南側、東寄りの用務員室だと思う', JANITOR),
+      ],
     },
+    // 白石さんの立ち絵（表情ごと）。助けたときの会話と、物語の場面で出る
+    faces: {
+      normal: 'assets/shiraishi/normal.jpg', anxious: 'assets/shiraishi/anxious.jpg', relief: 'assets/shiraishi/relief.jpg',
+      surprise: 'assets/shiraishi/surprise.jpg', tears: 'assets/shiraishi/tears.jpg', smile: 'assets/shiraishi/smile.jpg', close: 'assets/shiraishi/close.jpg',
+    },
+    rescueTalk: [
+      { w: GIRL, t: '……え？ ' + HERO + 'くん……！？ どうして、ここに……', face: 'surprise' },
+      { w: HERO, t: '助けに来た。ケガはない？' },
+      { w: GIRL, t: 'う、うん……大丈夫。でも、外にはあの人たちがいっぱいいて……', face: 'anxious' },
+      { w: GIRL, t: '怖かった……。ずっと、誰も来てくれないんじゃないかって……', face: 'tears' },
+      { w: HERO, t: 'もう大丈夫。一緒にここを出よう。裏門から抜けられるはずだ' },
+      { w: GIRL, t: '……うん。' + HERO + 'くんについていく。', face: 'relief' },
+      { w: HERO, t: 'ただ、裏門には鍵がかかってる。鍵のありかが分かれば……' },
+      { w: GIRL, t: 'みんなも、どこかに隠れてるはずだよ。誰か知ってるかも。聞いてみよう？', face: 'normal' },
+      { w: GIRL, t: '……来てくれて、ありがとう。', face: 'close' },
+    ],
     names: { hero: HERO, girl: GIRL },
     chars: { player: () => TG.models.player(), girl: () => TG.models.girl(), mob: (i) => TG.models.student(i) },
     clueItem: 'charm',
@@ -296,7 +319,7 @@ TG.STAGES = TG.STAGES || {};
         { t: '……嘘だろ。妄想が、現実になった。' },
         { t: '混乱のすきに、僕は教室の一番後ろ、掃除用具ロッカーへ滑り込んだ。' },
         { w: '覆面の男', t: 'おい、そこの女。こっちに来い。' },
-        { w: GIRL, t: 'や……やだ……っ！' },
+        { w: GIRL, t: 'や……やだ……っ！', face: 'anxious' },
         { t: '白石美月さん。クラスで、いや、学校でいちばん……僕がずっと好きだった人。' },
         { w: '覆面の男', riddle: true },
         { t: '白石さんは、どこかへ連れていかれた。……どこへ？' },
@@ -306,8 +329,8 @@ TG.STAGES = TG.STAGES || {};
       ],
       ending: [
         { t: '裏門の外。パトカーの赤い光の中で、僕たちはやっと足を止めた。' },
-        { w: GIRL, t: '……ありがとう。ずっと、怖かった。' },
-        { w: GIRL, t: '来てくれるって、なんとなく思ってた。……なんでだろうね。' },
+        { w: GIRL, t: '……ありがとう。ずっと、怖かった。', face: 'tears' },
+        { w: GIRL, t: '来てくれるって、なんとなく思ってた。……なんでだろうね。', face: 'smile' },
         { w: HERO, t: 'あ、あのさ、白石さん。俺、ずっと――' },
         { w: '警察官', t: '君たち！ 無事か！！' },
         { t: '……続きは、また今度。' },
