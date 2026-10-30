@@ -1746,7 +1746,7 @@
   // 視点の種類（ポーズ画面で切り替え。端末に保存）
   let camMode = 'low';
   try { camMode = localStorage.getItem('tg-cam') || 'low'; } catch (e) { /* 保存できない環境 */ }
-  const camLabel = () => '視点：' + (camMode === 'low' ? '低い' : '高い');
+  const camLabel = () => '視点：' + (camMode === 'low' ? '標準' : '高い');
   $('camBtn').textContent = camLabel();
   $('camBtn').addEventListener('click', () => {
     camMode = camMode === 'low' ? 'high' : 'low';
@@ -1766,9 +1766,9 @@
     if (!P.hidden) {
       // 肩越し：右肩の後ろ上から。壁にめり込むときはカメラを手前に寄せる
       const fx = Math.sin(P.camA), fz = Math.cos(P.camA), rx = -Math.cos(P.camA), rz = Math.sin(P.camA);
-      // 視点は2種類：low＝主人公の肩のすぐ後ろ・目線に近い高さ、high＝斜め上から見下ろす
+      // 視点は2種類：low（標準）＝肩の後ろ・目線より少し上から、high＝斜め上から見下ろす
       const low = camMode === 'low';
-      const want = (low ? 2.15 : 3.2) * Math.cos(P.pitch * 0.5);
+      const want = (low ? 2.6 : 3.2) * Math.cos(P.pitch * 0.5);
       // 肩のずらし幅。戸口などで右側がふさがっているときは、真後ろへ寄せて主人公に近づきすぎないようにする
       const shWant = low ? 0.62 : 0.45;
       const sideFree = (side) => camClip(P.x, P.z, P.x + rx * side - fx * want, P.z + rz * side - fz * want, false);
@@ -1792,12 +1792,12 @@
       // 屋内は天井の少し下、屋外はもっと高くから見下ろす（高さは今いる階・階段の高さから）
       const base = M.wy(P.x, P.z), top = S.camTop(P.x, P.z);
       const cy = low
-        ? base + clamp(1.72 - (P.crouch ? 0.55 : 0) + lift * 0.35 - Math.sin(P.pitch) * 1.0, 0.5, top)
+        ? base + clamp(2.05 - (P.crouch ? 0.45 : 0) + lift * 0.35 - Math.sin(P.pitch) * 1.2, 0.5, top)
         : base + clamp(top - 0.15 - (P.crouch ? 0.25 : 0) + lift * 0.3 - Math.sin(P.pitch) * 1.4, 0.6, top);
       camera.position.set(M.wx(P.x + (tx - P.x) * k), cy + bob * 0.4, P.z + (tz - P.z) * k);
       // 主人公の少し先（肩の延長線上）を見る。持ち上げたカメラでも主人公が画面に入る
-      const L = low ? 5 : 3.6;
-      const ly = low ? 1.25 - (P.crouch ? 0.45 : 0) - lift * 0.3 : 0.75 - lift * 0.6;
+      const L = low ? 4.4 : 3.6;
+      const ly = low ? 1.0 - (P.crouch ? 0.35 : 0) - lift * 0.4 : 0.75 - lift * 0.6;
       // 低い視点ではカメラを右肩の外へずらし、主人公を画面の左寄りに置いて前を見やすくする
       const lk = low ? sh * 0.9 : sh;
       tpsLook.set(M.wx(P.x) + rx * lk + fx * L, base + ly + Math.sin(P.pitch) * L, P.z + rz * lk + fz * L);
