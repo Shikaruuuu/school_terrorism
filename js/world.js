@@ -125,6 +125,9 @@ window.TG = window.TG || {};
       else if (t === T.GATE) push('gate', c);
     }
     const add = (m) => { group.add(m); return m; };
+    // 普通教室は内装キット（kit_classroom.js）で作る。ここでは作らない
+    const KIT = TG.kits && TG.kits.classroom ? ['1a', '2a', '2b', '3a'] : [];
+    const inKit = (x, z) => KIT.includes(roomOf(Math.floor(x), Math.floor(z)));
     const isWall = (x, z) => M.get(x, z) === T.WALL;
 
     // ===================== 地面 =====================
@@ -231,7 +234,7 @@ window.TG = window.TG || {};
     // 窓枠（縦の桟と横の桟）
     const frameGeo = merge([[B(1.78, 0.06, 0.06), [0, 0.62, 0]], [B(1.78, 0.06, 0.06), [0, -0.62, 0]], [B(0.06, 1.28, 0.06), [-0.86, 0, 0]], [B(0.06, 1.28, 0.06), [0.86, 0, 0]], [B(0.05, 1.28, 0.05), [0, 0, 0]], [B(1.78, 0.04, 0.04), [0, 0.15, 0]]]);
     const alu = MT.plain(0x9aa2a8, 0.35, 0.8);
-    inst(group, frameGeo, alu, winS.concat(winN).concat(winOut), (o, c) => { o.position.set(c.x, 1.72, c.fz); }, false);
+    inst(group, frameGeo, alu, winS.concat(winN.filter((c) => !inKit(c.x, c.z + 0.5))).concat(winOut), (o, c) => { o.position.set(c.x, 1.72, c.fz); }, false);
     // カーテン（南の窓の端に寄せてある）
     const curtain = MT.surface('fabric', 0xd9c69a, { side: THREE.DoubleSide });
     inst(group, B(0.32, 2.05, 0.05), curtain, winS.filter((_, i) => i % 3 === 0), (o, c) => { o.position.set(c.x - 0.95, 1.5, c.z - 0.08); }, 'receive');
@@ -284,8 +287,9 @@ window.TG = window.TG || {};
         const k = (x * 7 + z * 3) % 11;
         const c = { x: x + 0.5, z: z + 0.5 + (corr ? 0 : 0) };
         if (corr && k < 4) { dark.push(c); continue; }
-        if (k === 5 && corr) flick.push(c); else tubes.push(c);
-        sources.push({ x: c.x, y: WALL_H - 0.3, z: c.z, color: r.id === 'shed' ? 0xffc890 : 0xe8eeff, intensity: corr ? 2.6 : 3.2, distance: 6.5, flicker: k === 5 && corr ? () => (Math.sin(performance.now() * 0.031) > 0.6 || Math.random() < 0.05 ? 0.15 : 1) : null });
+        if (KIT.includes(r.id)) { /* 器具の形はキット側 */ } else if (k === 5 && corr) flick.push(c); else tubes.push(c);
+        // 光の位置は器具より少し下に置く（天井のすぐそばだと、器具のまわりの天井だけが白く飛ぶ）
+        sources.push({ x: c.x, y: WALL_H - 0.6, z: c.z, color: r.id === 'shed' ? 0xffc890 : 0xe8eeff, intensity: corr ? 1.9 : KIT.includes(r.id) ? 2.0 : 2.4, distance: 6.5, flicker: k === 5 && corr ? () => (Math.sin(performance.now() * 0.031) > 0.6 || Math.random() < 0.05 ? 0.15 : 1) : null });
       }
     });
     const housing = MT.plain(0xd8d8d4, 0.5, 0.3);
@@ -293,9 +297,9 @@ window.TG = window.TG || {};
     const tubeGeo = B(1.2, 0.025, 0.12);
     const allFix = tubes.concat(dark, flick);
     inst(group, fixtureGeo, housing, allFix, (o, c) => { o.position.set(c.x, WALL_H - 0.04, c.z); }, false);
-    inst(group, tubeGeo, MT.glow(0xeef3ff, 2.6), tubes, (o, c) => { o.position.set(c.x, WALL_H - 0.085, c.z); }, false);
+    inst(group, tubeGeo, MT.glow(0xeef3ff, 1.5), tubes, (o, c) => { o.position.set(c.x, WALL_H - 0.085, c.z); }, false);
     inst(group, tubeGeo, MT.plain(0x6a6e72, 0.4), dark, (o, c) => { o.position.set(c.x, WALL_H - 0.085, c.z); }, false);
-    const flickMat = MT.glow(0xeef3ff, 2.6).clone();
+    const flickMat = MT.glow(0xeef3ff, 1.5).clone();
     const flickMesh = inst(group, tubeGeo, flickMat, flick, (o, c) => { o.position.set(c.x, WALL_H - 0.085, c.z); }, false);
 
     // ===================== 教室 =====================
@@ -311,7 +315,7 @@ window.TG = window.TG || {};
       [B(0.025, 0.43, 0.025), [-0.17, 0.215, -0.16]], [B(0.025, 0.43, 0.025), [0.17, 0.215, -0.16]], [B(0.025, 0.85, 0.025), [-0.17, 0.425, 0.17]], [B(0.025, 0.85, 0.025), [0.17, 0.425, 0.17]],
     ]);
     const rnd = (s) => { const v = Math.sin(s * 12.9898) * 43758.5453; return v - Math.floor(v); };
-    const desks = (lists.desk || []).filter((c) => c.room !== 'music');
+    const desks = (lists.desk || []).filter((c) => c.room !== 'music' && !KIT.includes(c.room));
     const deskWood = MT.surface('deskwood');
     const deskPlace = (o, c) => { o.position.set(c.x + 0.5 + (rnd(c.x + c.z * 3) - 0.5) * 0.12, 0, c.z + 0.5 + (rnd(c.z + c.x) - 0.5) * 0.1); o.rotation.y = Math.PI / 2 + (rnd(c.x * 5 + c.z) - 0.5) * 0.25; };
     inst(group, deskTopGeo, deskWood, desks, (o, c) => { deskPlace(o, c); o.position.y = 0.72; });
@@ -331,7 +335,7 @@ window.TG = window.TG || {};
 
     // 教卓・作業台（部屋ごとに形を変える）
     const td = lists.tdesk || [];
-    const classTd = td.filter((c) => ['1a', '2a', '2b', '3a', 'janitor', 'infirm'].includes(c.room));
+    const classTd = td.filter((c) => ['1a', '2a', '2b', '3a', 'janitor', 'infirm'].includes(c.room) && !KIT.includes(c.room));
     inst(group, B(0.98, 0.04, 0.98), MT.surface('deskwood', 0xa07040), classTd, (o, c) => { o.position.set(c.x + 0.5, 0.86, c.z + 0.5); });
     inst(group, B(0.9, 0.84, 0.9), MT.surface('deskwood', 0x7a5530), classTd, (o, c) => { o.position.set(c.x + 0.5, 0.42, c.z + 0.5); });
     // 職員室：机の島、パソコンの画面、書類の山
@@ -367,7 +371,7 @@ window.TG = window.TG || {};
     const boards = { '1a': '1年A組　英語　be動詞', '2a': '5時間目　数学　x²−5x+6=0', '2b': '2年B組　国語　走れメロス', '3a': '3年A組　理科　電流と磁界', music: '♪ 合唱コンクール練習' };
     const boardFrame = MT.plain(0x6a4a2a, 0.5);
     M.rooms.forEach((r) => {
-      if (!boards[r.id]) return;
+      if (!boards[r.id] || KIT.includes(r.id)) return;
       const bm = add(new THREE.Mesh(new THREE.PlaneGeometry(5, 1.25), new THREE.MeshStandardMaterial({ map: boardTex(boards[r.id]), roughness: 0.9 })));
       bm.rotation.y = Math.PI / 2; bm.position.set(r.x0 + 0.03, 1.5, 8.5);
       const fr = add(new THREE.Mesh(merge([[B(0.05, 0.08, 5.15), [0, 0.66, 0]], [B(0.05, 0.08, 5.15), [0, -0.66, 0]], [B(0.05, 1.4, 0.08), [0, 0, 2.55]], [B(0.05, 1.4, 0.08), [0, 0, -2.55]], [B(0.14, 0.04, 5), [0.07, -0.7, 0]]]), boardFrame));
@@ -386,7 +390,7 @@ window.TG = window.TG || {};
     // ロッカー（掃除用具・保健室・用務員室）：塗装した金属、通気口、取っ手
     const lockerMat = MT.surface('locker', 0xffffff).clone();
     MT.worldUV(lockerMat, 0.5);
-    const lockerCells = M.lockers;
+    const lockerCells = M.lockers.filter((l) => !inKit(l.x, l.z));
     inst(group, B(0.86, 2.0, 0.92), lockerMat, lockerCells, (o, l) => { o.position.set(l.x + 0.52, 1.0, l.z + 0.5); });
     inst(group, B(0.02, 0.22, 0.04), MT.plain(0x2a2e34, 0.3, 0.8), lockerCells, (o, l) => { o.position.set(l.x + 0.52 + Math.sin(l.face) * 0.45, 1.1, l.z + 0.5 + Math.cos(l.face) * 0.45 + 0.25); });
 
@@ -557,12 +561,15 @@ window.TG = window.TG || {};
     // ===================== 照明・動き =====================
     TG.gfx.setLightSources(sources);
     const occluders = [lockerMat].concat(shelfMats);
+    const kit = KIT.length ? TG.kits.classroom(group, { map: M, boardTex, boardText: boards, clockTex, posterTex, northWindows: winN }) : null;
+    if (kit) occluders.push(...kit.occluders);
     let ft = 0;
-    function update(t, dt) {
+    function update(t, dt, focus) {
+      if (kit) kit.update(focus);
       shaftMat.uniforms.time.value = t;
       // ちらつく蛍光灯
       const on = Math.sin(t * 31) > 0.6 || Math.random() < 0.06;
-      flickMat.color.setScalar(on ? 0.35 : 2.6);
+      flickMat.color.setScalar(on ? 0.35 : 1.5);
       // ほこりがゆっくり舞う
       ft += dt || 0;
       dust.position.y = Math.sin(ft * 0.2) * 0.05;

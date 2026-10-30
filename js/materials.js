@@ -100,6 +100,87 @@ window.TG = window.TG || {};
 
   // ---- 個々の質感の絵 ----
   const PAINT = {
+    // ---- 教室キット用（質感の見本となる普通教室で使う） ----
+    // 教室の床：幅の狭いフローリング。板ごとに色と木目、継ぎ目を少しずつずらし、ワックスのむら
+    floorOak(x, n) {
+      const r = rng(301), rows = 16, rh = n / rows;
+      for (let i = 0; i < rows; i++) {
+        let px = -r() * n * 0.8;
+        while (px < n) {
+          const len = n * (0.45 + r() * 0.6), tone = 0.86 + r() * 0.22, warm = r() * 14;
+          x.fillStyle = 'rgb(' + Math.floor((158 + warm) * tone) + ',' + Math.floor(126 * tone) + ',' + Math.floor(94 * tone) + ')';
+          x.fillRect(px, i * rh, len, rh);
+          for (let k = 0; k < 7; k++) {
+            x.strokeStyle = 'rgba(80,46,20,' + (0.08 + r() * 0.14) + ')'; x.lineWidth = 0.6 + r() * 1.2;
+            const yy = i * rh + r() * rh;
+            x.beginPath(); x.moveTo(px, yy); x.bezierCurveTo(px + len * 0.33, yy + (r() - 0.5) * 5, px + len * 0.66, yy + (r() - 0.5) * 5, px + len, yy + (r() - 0.5) * 3); x.stroke();
+          }
+          // 節（ときどき）
+          if (r() < 0.25) { const kx = px + r() * len, ky = i * rh + rh / 2; const g = x.createRadialGradient(kx, ky, 0, kx, ky, rh * 0.35); g.addColorStop(0, 'rgba(70,38,16,.55)'); g.addColorStop(1, 'rgba(70,38,16,0)'); x.fillStyle = g; x.fillRect(kx - rh, ky - rh, rh * 2, rh * 2); }
+          x.fillStyle = 'rgba(35,18,8,.75)'; x.fillRect(px, i * rh, 1.6, rh);
+          px += len;
+        }
+        x.fillStyle = 'rgba(30,15,6,.7)'; x.fillRect(0, i * rh, n, 1.4);
+        x.fillStyle = 'rgba(255,230,190,.08)'; x.fillRect(0, i * rh + 1.4, n, 1);
+      }
+      noise(x, n, 302, 4, 0.1, false);
+    },
+    // 机の天板（化粧板）：明るい木目、細かい均一な目
+    oak(x, n) {
+      x.fillStyle = '#d4a873'; x.fillRect(0, 0, n, n);
+      const r = rng(311);
+      for (let i = 0; i < n * 0.35; i++) {
+        x.strokeStyle = 'rgba(' + (120 + r() * 30) + ',' + (72 + r() * 20) + ',30,' + (0.06 + r() * 0.12) + ')';
+        x.lineWidth = 0.6 + r() * 1.6;
+        const yy = r() * n;
+        x.beginPath(); x.moveTo(0, yy); x.bezierCurveTo(n * 0.3, yy + (r() - 0.5) * 14, n * 0.7, yy + (r() - 0.5) * 14, n, yy + (r() - 0.5) * 4); x.stroke();
+      }
+      noise(x, n, 312, 3, 0.07, true);
+    },
+    // 成形合板（椅子の座面・背もたれ）：薄い層の木口と、明るい白木
+    plywood(x, n) {
+      x.fillStyle = '#d8b88c'; x.fillRect(0, 0, n, n);
+      const r = rng(321);
+      for (let i = 0; i < n * 0.25; i++) {
+        x.strokeStyle = 'rgba(140,90,40,' + (0.05 + r() * 0.1) + ')'; x.lineWidth = 0.8 + r() * 2;
+        const yy = r() * n; x.beginPath(); x.moveTo(0, yy); x.quadraticCurveTo(n / 2, yy + (r() - 0.5) * 30, n, yy); x.stroke();
+      }
+      noise(x, n, 322, 3, 0.06, false);
+    },
+    // 腰板（縦張りの羽目板）：12cmごとの溝
+    panel(x, n) {
+      const r = rng(331), w = n / 8;
+      for (let i = 0; i < 8; i++) {
+        const tone = 0.85 + r() * 0.2;
+        x.fillStyle = 'rgb(' + Math.floor(138 * tone) + ',' + Math.floor(110 * tone) + ',' + Math.floor(84 * tone) + ')';
+        x.fillRect(i * w, 0, w, n);
+        for (let k = 0; k < 5; k++) { x.strokeStyle = 'rgba(70,40,18,' + (0.08 + r() * 0.1) + ')'; x.lineWidth = 1; const xx = i * w + r() * w; x.beginPath(); x.moveTo(xx, 0); x.bezierCurveTo(xx + (r() - 0.5) * 6, n * 0.3, xx + (r() - 0.5) * 6, n * 0.7, xx, n); x.stroke(); }
+        x.fillStyle = 'rgba(25,14,6,.85)'; x.fillRect(i * w, 0, 2.5, n);
+        x.fillStyle = 'rgba(255,220,170,.12)'; x.fillRect(i * w + 2.5, 0, 1.5, n);
+      }
+      noise(x, n, 332, 3, 0.08, false);
+    },
+    // 塗装した鉄（机の脚・ロッカー・器具）：ゆず肌の細かい凹凸
+    paintsteel(x, n) {
+      x.fillStyle = '#8c9690'; x.fillRect(0, 0, n, n);
+      noise(x, n, 341, 5, 0.12, false);
+      speckle(x, n, 342, n * 30, ['rgba(255,255,255,.05)', 'rgba(0,0,0,.06)'], 1.3);
+    },
+    // コルクの掲示板
+    cork(x, n) {
+      x.fillStyle = '#b48a58'; x.fillRect(0, 0, n, n);
+      speckle(x, n, 351, n * 40, ['rgba(90,55,25,.5)', 'rgba(220,180,120,.45)', 'rgba(60,35,15,.4)'], 2.4);
+      noise(x, n, 352, 3, 0.12, false);
+    },
+    // 天井の化粧石こうボード（細かいトラバーチン模様）
+    ceilBoard(x, n) {
+      x.fillStyle = '#e6e2d8'; x.fillRect(0, 0, n, n);
+      const r = rng(361);
+      for (let i = 0; i < n * 3; i++) { x.fillStyle = 'rgba(110,105,95,' + (0.15 + r() * 0.25) + ')'; const w = 1 + r() * 5; x.fillRect(r() * n, r() * n, w, 1 + r() * 1.6); }
+      x.strokeStyle = 'rgba(80,78,70,.55)'; x.lineWidth = 2.5;
+      x.strokeRect(1, 1, n - 2, n - 2);
+      noise(x, n, 362, 3, 0.06, false);
+    },
     // 塗り壁（しっくい）：少しまだらで、細かい凹凸
     plaster(x, n) {
       x.fillStyle = '#d8d2c2'; x.fillRect(0, 0, n, n);
@@ -235,6 +316,13 @@ window.TG = window.TG || {};
   };
   // 法線の強さと、粗さ（つやの無さ）
   const SPEC = {
+    floorOak: { normal: 2.0, rough: 0.36, rVar: 0.22, scale: 0.42, nScale: 0.45, size: 1024 },
+    oak: { normal: 0.9, rough: 0.34, rVar: 0.12, scale: 1.4, nScale: 0.25 },
+    plywood: { normal: 0.8, rough: 0.42, rVar: 0.12, scale: 1.6, nScale: 0.25 },
+    panel: { normal: 3.0, rough: 0.5, rVar: 0.15, scale: 1.0, nScale: 0.8 },
+    paintsteel: { normal: 1.2, rough: 0.42, rVar: 0.15, metal: 0.35, scale: 2.0, nScale: 0.3 },
+    cork: { normal: 3.0, rough: 0.95, rVar: 0.05, scale: 1.2, nScale: 0.8 },
+    ceilBoard: { normal: 2.0, rough: 0.92, rVar: 0.05, scale: 0.5, nScale: 0.6 },
     plaster: { normal: 1.5, rough: 0.92, scale: 0.5 },
     lino: { normal: 1.2, rough: 0.45, scale: 0.5, nScale: 0.4 },
     wood: { normal: 2.2, rough: 0.5, scale: 0.4 },
@@ -256,9 +344,20 @@ window.TG = window.TG || {};
   const maps = {};
   function mapsFor(kind) {
     if (maps[kind]) return maps[kind];
-    const c = canvas();
+    const sp = SPEC[kind];
+    const c = canvas(sp.size ? (isTouch ? sp.size / 2 : sp.size) : SZ);
     PAINT[kind](c.getContext('2d'), c.width);
-    maps[kind] = { map: tex(c, true), normalMap: tex(normalFrom(c, SPEC[kind].normal)) };
+    maps[kind] = { map: tex(c, true), normalMap: tex(normalFrom(c, sp.normal)) };
+    // 粗さのむら（ワックスや手あかの光り方の違い）。rVar がある質感だけ
+    if (sp.rVar) {
+      const rc = canvas(Math.min(c.width, 512));
+      const rx = rc.getContext('2d'), n = rc.width;
+      const v = Math.round(sp.rough * 255);
+      rx.fillStyle = 'rgb(' + v + ',' + v + ',' + v + ')'; rx.fillRect(0, 0, n, n);
+      noise(rx, n, 977 + kind.length, 4, sp.rVar * 1.6, false);
+      noise(rx, n, 978 + kind.length, 3, sp.rVar, true);
+      maps[kind].roughnessMap = tex(rc);
+    }
     return maps[kind];
   }
 
@@ -273,7 +372,7 @@ window.TG = window.TG || {};
     const fade = o2.camFade;
     delete o2.uvScale; delete o2.camFade;
     const m = new THREE.MeshStandardMaterial(Object.assign({
-      map: mp.map, normalMap: mp.normalMap, roughness: sp.rough, metalness: sp.metal || 0,
+      map: mp.map, normalMap: mp.normalMap, roughness: mp.roughnessMap ? 1 : sp.rough, roughnessMap: mp.roughnessMap || null, metalness: sp.metal || 0,
       color: color == null ? 0xffffff : color,
     }, o2));
     m.normalScale.setScalar(sp.nScale || 0.8);

@@ -338,5 +338,6 @@ window.TG = window.TG || {};
     init, setLook, setFocus, setLightSources, setQuality, cycleQuality, resize, render, flash,
     get quality() { return qName; }, get qualityLabel() { return Q.name; }, get shadows() { return Q.shadow > 0; },
     fx: target, sun, hemi, get _renderer() { return R; }, sceneInfo,
+    get pixelRatio() { return R ? R.getPixelRatio() : 1; }, get resScale() { return dynScale; },
   };
 })();

@@ -548,7 +548,52 @@
 
   // ---------- ポーズ ----------
   // mode: 'stand' | 'crouch' | 'sit' | 'down' | 'tied'
+  // ---------- GLB の人物への差し替え（TG.assets の 'char/<ID>' に GLB が登録されているときだけ） ----------
+  // 手続き生成の体は隠し、GLB のアニメーション（AnimationMixer）で同じ姿勢の指示に従わせる。
+  // 位置・向き・当たり判定は今まで通り model.group で決まるので、ゲームの動きは変わらない
+  function withAsset(id, model, prio) {
+    const A = TG.assets;
+    if (!A || !A.manifest['char/' + id]) return model;
+    prio = prio || 0;
+    if (model.assetWant && model.assetWant.prio > prio) return model;
+    model.assetWant = { id, prio };
+    A.load('char/' + id).then((g) => {
+      if (!g || !model.assetWant || model.assetWant.id !== id || model.mixer) return;
+      const spec = A.manifest['char/' + id];
+      const root = g.scene;
+      root.scale.setScalar(spec.scale || 1);
+      root.rotation.y = spec.yaw || 0;
+      root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
+      model.body.visible = false;
+      model.group.add(root);
+      model.mixer = new THREE.AnimationMixer(root);
+      model.actions = {};
+      const clips = spec.clips || {};
+      Object.keys(clips).forEach((k) => { const c = THREE.AnimationClip.findByName(g.animations, clips[k]); if (c) model.actions[k] = model.mixer.clipAction(c); });
+      if (!Object.keys(model.actions).length && g.animations.length) model.actions.idle = model.mixer.clipAction(g.animations[0]);
+      model.cur = null;
+      poseGLB(model, model.lastMode || 'stand', false, 0);
+    });
+    return model;
+  }
+  function poseGLB(p, mode, moving, dt) {
+    let k = mode === 'sit' ? 'sit' : mode === 'down' || mode === 'tied' ? 'down' : mode === 'crouch' ? (moving ? 'crouchWalk' : 'crouch') : mode === 'run' ? 'run' : moving ? 'walk' : 'idle';
+    if (!p.actions[k]) k = k === 'crouchWalk' && p.actions.walk ? 'walk' : k === 'run' && p.actions.walk ? 'walk' : p.actions.idle ? 'idle' : Object.keys(p.actions)[0];
+    const a = p.actions[k];
+    if (a && p.cur !== a) {
+      if (p.cur) p.cur.fadeOut(0.2);
+      if (k === 'down' || k === 'sit') { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+      a.reset().fadeIn(0.2).play();
+      p.cur = a;
+    }
+    p.mixer.update(dt || 0);
+  }
   function pose(p, mode, moving, dt, speed) {
+    p.lastMode = mode;
+    if (p.mixer) { poseGLB(p, mode, moving, dt, speed); return; }
+    poseRig(p, mode, moving, dt, speed);
+  }
+  function poseRig(p, mode, moving, dt, speed) {
     const b = p.body;
     p.walkT += (dt || 0) * (speed || 6);
     const s = moving ? Math.sin(p.walkT) : 0;
@@ -683,5 +728,12 @@
     return g;
   }
 
-  Object.assign(MD, { human, pose, player, terrorist, girl, student, fpArm, mallPlayer, mallGirl, civilian });
+  // 人物ごとの ID（会話の立ち絵の ID と同じ）で、GLB があれば差し替える
+  const W = (id, f) => (...a) => withAsset(id, f(...a));
+  Object.assign(MD, {
+    human, pose, withAsset, fpArm,
+    player: W('yuto', player), girl: W('shiraishi', girl), student: W('student', student),
+    terrorist: (boss) => withAsset(boss ? 'leader' : 'terrorist', terrorist(boss)),
+    mallPlayer: W('kazuya', mallPlayer), mallGirl: W('misaki', mallGirl), civilian: W('civilian', civilian),
+  });
 })();

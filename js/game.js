@@ -393,6 +393,8 @@
         hint = vs[Math.floor(k / types.length) % vs.length];
       }
       const m = c.model ? c.model() : S.chars.mob(c.i);
+      // 話を聞ける人は、その人の ID の GLB があれば優先して使う（佐藤くん・先生・店員など）
+      if (c.cast) MD.withAsset(c.cast, m, 1);
       place(m.group, c.x, c.z);
       m.group.rotation.y = c.face;
       MD.pose(m, 'crouch', false, 0);
@@ -2084,7 +2086,23 @@
   let hudT = 0;
   // タイトル背景用のカメラ
   const titleCam = { a: 0 };
+  // 実機での計測用：URL に ?fps を付けると、左上にフレームレートと描画の重さを出す
+  const perf = /[?&]fps\b/.test(location.search) ? { el: document.body.appendChild(Object.assign(document.createElement('div'), { id: 'perfHud' })), ms: [], t: 0 } : null;
+  if (perf) perf.el.style.cssText = 'position:fixed;left:4px;top:4px;z-index:99;font:11px/1.35 monospace;color:#0f0;background:rgba(0,0,0,.6);padding:3px 6px;pointer-events:none;white-space:pre';
+  function perfTick(raw) {
+    perf.ms.push(raw);
+    perf.t += raw;
+    if (perf.t < 1000) return;
+    const a = perf.ms.slice().sort((x, y) => x - y), n = a.length;
+    const avg = perf.t / n, p95 = a[Math.min(n - 1, Math.floor(n * 0.95))];
+    const si = GFX.sceneInfo;
+    perf.el.textContent = (1000 / avg).toFixed(1) + ' fps  avg ' + avg.toFixed(1) + 'ms  p95 ' + p95.toFixed(1) + 'ms\n'
+      + 'calls ' + si.calls + '  tris ' + Math.round(si.tris / 1000) + 'k\n'
+      + GFX.quality + '  px ' + GFX.pixelRatio.toFixed(2) + '  res ' + Math.round(GFX.resScale * 100) + '%  ' + innerWidth + 'x' + innerHeight;
+    perf.ms = []; perf.t = 0;
+  }
   function frame(now) {
+    if (perf) perfTick(now - lastT);
     const dt = Math.min(0.05, (now - lastT) / 1000);
     lastT = now;
     const t = now / 1000;
@@ -2125,7 +2143,7 @@
       camera.lookAt(tc.x, 0, tc.z);
       worldRefs.policeLights.forEach((m, i) => { m.visible = (Math.floor(t * 4) + i) % 2 === 0; });
     }
-    if (worldRefs.update) worldRefs.update(t, dt);
+    if (worldRefs.update) worldRefs.update(t, dt, camera.position);
     // 画面の演出：見つかった・危険・会話中・2人でいる
     const fxT = GFX.fx;
     fxT.alert = G && screen === 'play' && G.phase === 'alert' ? 1 : 0;
