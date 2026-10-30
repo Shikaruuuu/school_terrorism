@@ -2086,6 +2086,12 @@
   let hudT = 0;
   // タイトル背景用のカメラ
   const titleCam = { a: 0 };
+  // iPhone の Safari は「拡大しない」の指定を無視するので、2本指の拡大とダブルタップの拡大をここで止める
+  // （拡大されると、ボタンやスティックが画面の外に出て操作できなくなる）
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach((ev) => document.addEventListener(ev, (e) => e.preventDefault(), { passive: false }));
+  document.addEventListener('touchmove', (e) => { if (e.touches.length > 1 || (e.scale !== undefined && e.scale !== 1)) e.preventDefault(); }, { passive: false });
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', (e) => { const now = Date.now(); if (now - lastTouchEnd < 300 && !e.target.closest('button')) e.preventDefault(); lastTouchEnd = now; }, { passive: false });
   // 実機での計測用：URL に ?fps を付けると、左上にフレームレートと描画の重さを出す
   const perf = /[?&]fps\b/.test(location.search) ? { el: document.body.appendChild(Object.assign(document.createElement('div'), { id: 'perfHud' })), ms: [], t: 0 } : null;
   if (perf) perf.el.style.cssText = 'position:fixed;left:4px;top:4px;z-index:99;font:11px/1.35 monospace;color:#0f0;background:rgba(0,0,0,.6);padding:3px 6px;pointer-events:none;white-space:pre';

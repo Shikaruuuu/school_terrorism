@@ -30,7 +30,7 @@
   --safe-b: max(10px, env(safe-area-inset-bottom, 0px));
   color-scheme: dark;
 }
-* { box-sizing: border-box; }
+* { box-sizing: border-box; touch-action: manipulation; } /* ダブルタップで拡大しない */
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ink); color: var(--chalk); font-family: var(--f-body); }
 body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
