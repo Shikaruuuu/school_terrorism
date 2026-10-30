@@ -358,7 +358,7 @@ window.TG = window.TG || {};
     inst(group, B(0.04, 0.02, 0.04), MT.glow(0x40ff90, 2), knobs.filter((k) => k.k === 0), (o, c) => { o.position.set(c.x, 0.88, c.z); }, false);
     inst(group, B(0.04, 0.02, 0.04), MT.glow(0xffa020, 2), knobs.filter((k) => k.k === 1), (o, c) => { o.position.set(c.x, 0.88, c.z); }, false);
     inst(group, CY(0.018, 0.018, 0.05, 8), MT.plain(0x9a9a9a, 0.3, 0.8), knobs.filter((k) => k.k > 1), (o, c) => { o.position.set(c.x, 0.89, c.z); }, false);
-    const onAir = new THREE.MeshBasicMaterial({ map: onAirTex, color: new THREE.Color(2.4, 2.4, 2.4), toneMapped: false });
+    const onAir = MT.camFade(new THREE.MeshBasicMaterial({ map: onAirTex, color: new THREE.Color(2.4, 2.4, 2.4), toneMapped: false }));
     [[35.5, 2.35, 17.03, 0], [35.5, 2.35, 25.97, Math.PI]].forEach(([x, y, z, r]) => { const m = add(new THREE.Mesh(new THREE.PlaneGeometry(0.75, 0.28), onAir)); m.position.set(x, y, z); m.rotation.y = r; });
     // 吸音パネル（放送室の壁）
     inst(group, B(0.06, 1.4, 0.9), MT.surface('fabric', 0x3a3e48), [[32.06, 19], [32.06, 21], [32.06, 23], [38.94, 23]].map(([x, z]) => ({ x, z })), (o, c) => { o.position.set(c.x, 1.6, c.z + 0.5); }, 'receive');
@@ -521,7 +521,7 @@ window.TG = window.TG || {};
     ];
     plates.forEach(([t, x, z, r]) => {
       // 戸口の上の壁に貼った室名札（カメラの高さに出っ張らないよう、平らに貼る）
-      const p = add(new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.26), new THREE.MeshStandardMaterial({ map: plateTex(t), roughness: 0.6 })));
+      const p = add(new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.26), MT.camFade(new THREE.MeshStandardMaterial({ map: plateTex(t), roughness: 0.6 }))));
       if (r === -Math.PI / 2) { p.position.set(15.02, 2.1, z); p.rotation.y = Math.PI / 2; return; }
       p.position.set(x, 2.45, r === 0 ? 14.02 : 16.98);
       p.rotation.y = r === 0 ? 0 : Math.PI;

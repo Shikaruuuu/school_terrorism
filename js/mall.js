@@ -496,7 +496,10 @@ TG.STAGES = TG.STAGES || {};
         x.fillStyle = '#fff6e8'; x.font = '900 ' + (st.name.length > 5 ? 56 : 70) + 'px ' + FONT; x.textAlign = 'center'; x.textBaseline = 'middle';
         x.fillText(st.name, w / 2, h / 2 + 4);
       });
-      const m = add(new THREE.Mesh(B(2.6, 0.62, 0.12), [MT.plain(0x2a2e34, 0.4, 0.6), MT.plain(0x2a2e34, 0.4, 0.6), MT.plain(0x2a2e34, 0.4, 0.6), MT.plain(0x2a2e34, 0.4, 0.6), new THREE.MeshBasicMaterial({ map: tx, color: new THREE.Color(1.5, 1.5, 1.5), toneMapped: false }), new THREE.MeshBasicMaterial({ map: tx, color: new THREE.Color(1.5, 1.5, 1.5), toneMapped: false })]));
+      // 店に出入りするとき、カメラが近づいた看板は網目状に消える
+      const side = MT.plain(0x2a2e34, 0.4, 0.6, { camFade: true });
+      const face = MT.camFade(new THREE.MeshBasicMaterial({ map: tx, color: new THREE.Color(1.5, 1.5, 1.5), toneMapped: false }));
+      const m = add(new THREE.Mesh(B(2.6, 0.62, 0.12), [side, side, side, side, face, face]));
       const [sx, sz] = st.sign;
       const y = (st.fl ? FLOOR_H : 0) + (st.fl ? 3.45 : 3.65);
       const vert = Math.abs(sx - 14.6) < 0.3 || Math.abs(sx - 40.4) < 0.3;
@@ -505,7 +508,7 @@ TG.STAGES = TG.STAGES || {};
     });
     // 出入口の非常口の表示
     const exitTex = cv(256, 128, (x, w, h) => { x.fillStyle = '#0f9d58'; x.fillRect(0, 0, w, h); x.fillStyle = '#fff'; x.font = '900 46px ' + FONT; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('非常口', w / 2, h / 2); });
-    const exitMat = new THREE.MeshBasicMaterial({ map: exitTex, color: new THREE.Color(1.8, 1.8, 1.8), toneMapped: false, side: THREE.DoubleSide });
+    const exitMat = MT.camFade(new THREE.MeshBasicMaterial({ map: exitTex, color: new THREE.Color(1.8, 1.8, 1.8), toneMapped: false, side: THREE.DoubleSide }));
     [[0.6, 14.9, Math.PI / 2], [55.4, 27, -Math.PI / 2], [41, 0.7, 0], [28, 38.6, Math.PI]].forEach(([x, z, r]) => { const m = add(new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.45), exitMat)); m.position.set(x, 2.9, z); m.rotation.y = r; });
     // 吹き抜けに下がるセールの垂れ幕
     const banner = cv(128, 512, (x, w, h) => { x.fillStyle = '#c8202c'; x.fillRect(0, 0, w, h); x.fillStyle = '#fff'; x.font = '900 70px ' + FONT; x.textAlign = 'center'; ['秋', 'の', '大', '感', '謝', '祭'].forEach((t, i) => x.fillText(t, w / 2, 70 + i * 76)); });

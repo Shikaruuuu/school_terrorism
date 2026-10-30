@@ -1743,6 +1743,16 @@
     worldRefs.policeLights.forEach((m, i) => { m.visible = (Math.floor(t * 4) + i) % 2 === 0; });
   }
   const tpsLook = new THREE.Vector3();
+  // 視点の種類（ポーズ画面で切り替え。端末に保存）
+  let camMode = 'low';
+  try { camMode = localStorage.getItem('tg-cam') || 'low'; } catch (e) { /* 保存できない環境 */ }
+  const camLabel = () => '視点：' + (camMode === 'low' ? '低い' : '高い');
+  $('camBtn').textContent = camLabel();
+  $('camBtn').addEventListener('click', () => {
+    camMode = camMode === 'low' ? 'high' : 'low';
+    try { localStorage.setItem('tg-cam', camMode); } catch (e) { /* 保存できない環境 */ }
+    $('camBtn').textContent = camLabel();
+  });
   function updateCamera(dt) {
     const eye = P.hidden ? 1.45 : P.crouch ? 0.95 : 1.5;
     P.eye += (eye - P.eye) * Math.min(1, dt * 10);
@@ -1756,8 +1766,17 @@
     if (!P.hidden) {
       // 肩越し：右肩の後ろ上から。壁にめり込むときはカメラを手前に寄せる
       const fx = Math.sin(P.camA), fz = Math.cos(P.camA), rx = -Math.cos(P.camA), rz = Math.sin(P.camA);
-      const want = 3.2 * Math.cos(P.pitch * 0.5);
-      const tx = P.x + rx * 0.45 - fx * want, tz = P.z + rz * 0.45 - fz * want;
+      // 視点は2種類：low＝主人公の肩のすぐ後ろ・目線に近い高さ、high＝斜め上から見下ろす
+      const low = camMode === 'low';
+      const want = (low ? 2.15 : 3.2) * Math.cos(P.pitch * 0.5);
+      // 肩のずらし幅。戸口などで右側がふさがっているときは、真後ろへ寄せて主人公に近づきすぎないようにする
+      const shWant = low ? 0.62 : 0.45;
+      const sideFree = (side) => camClip(P.x, P.z, P.x + rx * side - fx * want, P.z + rz * side - fz * want, false);
+      const goalSide = low && sideFree(shWant) < 0.7 && sideFree(0) > sideFree(shWant) + 0.15 ? 0 : shWant;
+      if (P.camSide === undefined) P.camSide = goalSide;
+      P.camSide += (goalSide - P.camSide) * Math.min(1, dt * 5);
+      const sh = P.camSide;
+      const tx = P.x + rx * sh - fx * want, tz = P.z + rz * sh - fz * want;
       let free = camClip(P.x, P.z, tx, tz, false);
       // ロッカーや棚が背後にあるときは、その上を越えてカメラを置く
       let over = false;
@@ -1772,11 +1791,16 @@
       const lift = Math.max(0, 1.2 - P.camDist) * 0.9 + P.camOver * 0.7;
       // 屋内は天井の少し下、屋外はもっと高くから見下ろす（高さは今いる階・階段の高さから）
       const base = M.wy(P.x, P.z), top = S.camTop(P.x, P.z);
-      const cy = base + clamp(top - 0.15 - (P.crouch ? 0.25 : 0) + lift * 0.3 - Math.sin(P.pitch) * 1.4, 0.6, top);
+      const cy = low
+        ? base + clamp(1.72 - (P.crouch ? 0.55 : 0) + lift * 0.35 - Math.sin(P.pitch) * 1.0, 0.5, top)
+        : base + clamp(top - 0.15 - (P.crouch ? 0.25 : 0) + lift * 0.3 - Math.sin(P.pitch) * 1.4, 0.6, top);
       camera.position.set(M.wx(P.x + (tx - P.x) * k), cy + bob * 0.4, P.z + (tz - P.z) * k);
       // 主人公の少し先（肩の延長線上）を見る。持ち上げたカメラでも主人公が画面に入る
-      const L = 3.6;
-      tpsLook.set(M.wx(P.x) + rx * 0.45 + fx * L, base + 0.75 - lift * 0.6 + Math.sin(P.pitch) * L, P.z + rz * 0.45 + fz * L);
+      const L = low ? 5 : 3.6;
+      const ly = low ? 1.25 - (P.crouch ? 0.45 : 0) - lift * 0.3 : 0.75 - lift * 0.6;
+      // 低い視点ではカメラを右肩の外へずらし、主人公を画面の左寄りに置いて前を見やすくする
+      const lk = low ? sh * 0.9 : sh;
+      tpsLook.set(M.wx(P.x) + rx * lk + fx * L, base + ly + Math.sin(P.pitch) * L, P.z + rz * lk + fz * L);
     } else {
       P.camDist = 0;
       camera.position.set(M.wx(x), M.wy(x, z) + P.eye + bob, z);
