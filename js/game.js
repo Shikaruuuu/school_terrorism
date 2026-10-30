@@ -1358,9 +1358,10 @@
   lookZone.addEventListener('pointerup', endLook);
   lookZone.addEventListener('pointercancel', endLook);
 
+  let lastActT = 0;
   function bindBtn(id, fn) {
     const b = $(id);
-    b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); b.classList.add('down'); fn(); });
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); b.classList.add('down'); lastActT = performance.now(); fn(); });
     const up = () => b.classList.remove('down');
     b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
     b.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1368,7 +1369,8 @@
   bindBtn('btnA', () => { pressed.action = true; });
   bindBtn('btnC', () => { pressed.crouch = true; });
   bindBtn('btnRun', () => { runOn = !runOn; $('btnRun').classList.toggle('on', runOn); $('btnRun').setAttribute('aria-pressed', String(runOn)); });
-  $('btnPause').addEventListener('click', () => pause(true));
+  // 殴るなどを連打している最中の誤タッチでポーズしないよう、操作ボタンを押した直後は受け付けない
+  $('btnPause').addEventListener('click', () => { if (performance.now() - lastActT > 600) pause(true); });
 
   // ===================== HUD =====================
   const hud = {
@@ -2091,7 +2093,20 @@
   ['gesturestart', 'gesturechange', 'gestureend'].forEach((ev) => document.addEventListener(ev, (e) => e.preventDefault(), { passive: false }));
   document.addEventListener('touchmove', (e) => { if (e.touches.length > 1 || (e.scale !== undefined && e.scale !== 1)) e.preventDefault(); }, { passive: false });
   let lastTouchEnd = 0;
-  document.addEventListener('touchend', (e) => { const now = Date.now(); if (now - lastTouchEnd < 300 && !e.target.closest('button')) e.preventDefault(); lastTouchEnd = now; }, { passive: false });
+  document.addEventListener('touchend', (e) => { const now = Date.now(); if (now - lastTouchEnd < 350) e.preventDefault(); lastTouchEnd = now; }, { passive: false });
+  // 操作用の場所（スティック・視点・殴るなどのボタン・レーダー）は、触れた瞬間にブラウザの動き（拡大・スクロール・長押し）を止める
+  // ボタンの処理は pointerdown で動くので、ここで止めても押した判定は消えない
+  ['stickZone', 'lookZone', 'btnA', 'btnC', 'btnRun', 'radar'].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false }); });
+  // それでも拡大されてしまったときは、表示の設定をかけ直して元の大きさに戻す
+  if (window.visualViewport) {
+    const vpMeta = document.querySelector('meta[name="viewport"]');
+    visualViewport.addEventListener('resize', () => {
+      if (!vpMeta || visualViewport.scale <= 1.01) return;
+      const c = vpMeta.content;
+      vpMeta.content = c.replace(/maximum-scale=[^,]*/, 'maximum-scale=1.0');
+      setTimeout(() => { vpMeta.content = c; }, 50);
+    });
+  }
   // 実機での計測用：URL に ?fps を付けると、左上にフレームレートと描画の重さを出す
   const perf = /[?&]fps\b/.test(location.search) ? { el: document.body.appendChild(Object.assign(document.createElement('div'), { id: 'perfHud' })), ms: [], t: 0 } : null;
   if (perf) perf.el.style.cssText = 'position:fixed;left:4px;top:4px;z-index:99;font:11px/1.35 monospace;color:#0f0;background:rgba(0,0,0,.6);padding:3px 6px;pointer-events:none;white-space:pre';
