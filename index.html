@@ -7,6 +7,17 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <title>〇〇にテロリスト</title>
+<script>
+// LINE の中のブラウザは連打で画面が拡大されるなど操作が不安定なので、Safari / Chrome で開き直す
+// （LINE は URL に openExternalBrowser=1 が付いていると外のブラウザで開く）
+(function () {
+  try {
+    if (/\bLine\//i.test(navigator.userAgent) && window.top === window && !/openExternalBrowser=1/.test(location.search)) {
+      location.replace(location.pathname + (location.search ? location.search + '&' : '?') + 'openExternalBrowser=1' + location.hash);
+    }
+  } catch (e) { /* 開き直せなければそのまま遊ぶ */ }
+})();
+</script>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
