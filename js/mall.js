@@ -302,7 +302,7 @@ TG.STAGES = TG.STAGES || {};
     });
     // 店の入口の上の枠
     const doorTops = list((t, x, z) => t === T.FLOOR && storefront(x, z) && get(x, z) !== T.WALL);
-    inst(group, B(1, 0.6, 1), MT.plain(0x2a2e34, 0.35, 0.7), doorTops, (o, c) => { const h = wallH(c.x); o.position.set(wxc(c.x), fy(c.x) + h - 0.9, c.z + 0.5); });
+    inst(group, B(1, 0.6, 1), MT.plain(0x2a2e34, 0.35, 0.7, { camFade: true }), doorTops, (o, c) => { const h = wallH(c.x); o.position.set(wxc(c.x), fy(c.x) + h - 0.9, c.z + 0.5); });
 
     // 天井：1階の天井（2階の床の裏）と2階の天井。照明のパネル
     const ceilMat = MT.surface('ceil', 0xffffff);

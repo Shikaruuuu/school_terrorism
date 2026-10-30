@@ -270,21 +270,55 @@ window.TG = window.TG || {};
     const sp = SPEC[kind], mp = mapsFor(kind);
     const o2 = Object.assign({}, opts || {});
     const uvs = o2.uvScale || sp.scale;
-    delete o2.uvScale;
+    const fade = o2.camFade;
+    delete o2.uvScale; delete o2.camFade;
     const m = new THREE.MeshStandardMaterial(Object.assign({
       map: mp.map, normalMap: mp.normalMap, roughness: sp.rough, metalness: sp.metal || 0,
       color: color == null ? 0xffffff : color,
     }, o2));
     m.normalScale.setScalar(sp.nScale || 0.8);
     worldUV(m, uvs);
+    if (fade) camFade(m);
     cache[key] = m;
     return m;
   }
   // 模様なしの質感（小物用）
   function plain(color, rough, metal, opts) {
     const key = 'plain|' + color + '|' + rough + '|' + metal + '|' + JSON.stringify(opts || {});
-    if (!cache[key]) cache[key] = new THREE.MeshStandardMaterial(Object.assign({ color, roughness: rough == null ? 0.7 : rough, metalness: metal || 0 }, opts || {}));
+    if (!cache[key]) {
+      const o2 = Object.assign({}, opts || {});
+      const fade = o2.camFade;
+      delete o2.camFade;
+      cache[key] = new THREE.MeshStandardMaterial(Object.assign({ color, roughness: rough == null ? 0.7 : rough, metalness: metal || 0 }, o2));
+      if (fade) camFade(cache[key]);
+    }
     return cache[key];
+  }
+  // カメラが近づくと、網目状に抜けて消える（戸口の上の壁など、肩越しカメラが入り込む所に使う）
+  function camFade(m) {
+    const prev = m.onBeforeCompile;
+    const prevKey = m.customProgramCacheKey ? m.customProgramCacheKey() : '';
+    m.onBeforeCompile = (sh, r) => {
+      if (prev) prev(sh, r);
+      sh.vertexShader = 'varying vec3 vCamW;\n' + sh.vertexShader.replace('#include <project_vertex>', [
+        '#include <project_vertex>',
+        '{ vec4 cw = vec4(transformed, 1.0);',
+        '#ifdef USE_INSTANCING',
+        '  cw = instanceMatrix * cw;',
+        '#endif',
+        '  vCamW = (modelMatrix * cw).xyz; }',
+      ].join('\n'));
+      sh.fragmentShader = 'varying vec3 vCamW;\n' + sh.fragmentShader.replace('void main() {', [
+        'void main() {',
+        '  float camD = distance(vCamW, cameraPosition);',
+        '  if (camD < 1.6) {',
+        '    float th = fract(dot(floor(gl_FragCoord.xy), vec2(0.5, 0.25)) + 0.125);',
+        '    if (camD < 0.9 || th > (camD - 0.9) / 0.7) discard;',
+        '  }',
+      ].join('\n'));
+    };
+    m.customProgramCacheKey = () => prevKey + '|camfade';
+    return m;
   }
   // 光る面（蛍光灯・看板・非常口の表示など）。ブルームでにじむように明るめに
   function glow(color, k) {
@@ -362,5 +396,5 @@ window.TG = window.TG || {};
     t.anisotropy = 4;
     return t;
   }
-  TG.mat = { surface, plain, glow, glass, worldUV, isTouch, merge, inst, cv, B, CY };
+  TG.mat = { camFade, surface, plain, glow, glass, worldUV, isTouch, merge, inst, cv, B, CY };
 })();

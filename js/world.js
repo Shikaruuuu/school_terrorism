@@ -194,9 +194,10 @@ window.TG = window.TG || {};
     [3, 13, 17, 27].forEach((z) => scanLine(true, z, 4, 59));
     [4, 13, 15, 22, 26, 31, 37, 40, 48, 50, 59].forEach((x) => scanLine(false, x, 3, 27));
     scanLine(true, 31, 5, 14); scanLine(true, 39, 5, 14); scanLine(false, 14, 31, 39); scanLine(false, 5, 31, 39);
-    inst(group, B(1, WALL_H - 2.1, 1), plaster, lintels, (o, c) => { o.position.set(c.x + 0.5, 2.1 + (WALL_H - 2.1) / 2, c.z + 0.5); });
-    inst(group, B(1.02, 0.08, 1.06), MT.plain(0x5a4630, 0.5), lintels, (o, c) => { o.position.set(c.x + 0.5, 2.08, c.z + 0.5); });
-    inst(group, B(0.08, 2.1, 1.06), MT.plain(0x5a4630, 0.5), jambs, (o, c) => { o.position.set(c.x, 1.05, c.z); if (c.horiz) o.rotation.y = 0; else o.rotation.y = Math.PI / 2; });
+    // 戸口の上の壁と枠は、通り抜けるときにカメラが入り込むので、近づくと消える
+    inst(group, B(1, WALL_H - 2.1, 1), MT.surface('plaster', 0xf1ead8, { camFade: true }), lintels, (o, c) => { o.position.set(c.x + 0.5, 2.1 + (WALL_H - 2.1) / 2, c.z + 0.5); });
+    inst(group, B(1.02, 0.08, 1.06), MT.plain(0x5a4630, 0.5, 0, { camFade: true }), lintels, (o, c) => { o.position.set(c.x + 0.5, 2.08, c.z + 0.5); });
+    inst(group, B(0.08, 2.1, 1.06), MT.plain(0x5a4630, 0.5, 0, { camFade: true }), jambs, (o, c) => { o.position.set(c.x, 1.05, c.z); if (c.horiz) o.rotation.y = 0; else o.rotation.y = Math.PI / 2; });
 
     // 教室の引き戸（開けたまま、戸袋側の壁の前に寄せてある）
     const doors = [];
